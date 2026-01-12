@@ -142,8 +142,10 @@ with tab_main:
             else:
                 st.warning("Chưa có dữ liệu câu hỏi.")
 
-# ... (Phần code trên giữ nguyên) ...
-
+with tab_guide:
+    for t, c in NOI_DUNG_HUONG_DAN:
+        with st.expander(t): st.write(c)
+            
 # TAB TÁC GIẢ (PHIÊN BẢN CHUẨN - KHÔNG LỖI)
 with tab_info:
     # Tiêu đề lớn & Phiên bản
@@ -172,4 +174,5 @@ with tab_info:
     st.divider()
     
     # Footer đơn giản
+
     st.caption("Developed with ❤️ by Thầy Tư Đô Nguyên & Gemini AI (2026)")
