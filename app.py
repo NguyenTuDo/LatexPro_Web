@@ -1,8 +1,8 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import app_logic as logic
-from cau_hinh.noi_dung_chu import NOI_DUNG_HUONG_DAN, THONG_TIN_UNG_DUNG
-from xu_ly_toan.math_utils import get_question_types, get_existing_answers
+from noi_dung_chu import NOI_DUNG_HUONG_DAN, THONG_TIN_UNG_DUNG
+from math_utils import get_question_types, get_existing_answers
 
 # 1. SETUP
 st.set_page_config(page_title="Latex Pro Web", page_icon="🚀", layout="wide", initial_sidebar_state="expanded")
@@ -172,4 +172,5 @@ with tab_info:
     st.divider()
     
     # Footer đơn giản
+
     st.caption("Developed with ❤️ by Thầy Tư Đô Nguyên & Gemini AI (2026)")
