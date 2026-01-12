@@ -2,16 +2,14 @@ import streamlit as st
 import re
 import pyperclip
 
-# --- IMPORT TỪ FILE CẤU HÌNH DUY NHẤT ---
-from cau_hinh.noi_dung_chu import NOI_DUNG_HUONG_DAN, THONG_TIN_UNG_DUNG
-
-from xu_ly_toan.math_utils import (process_formatting, inject_answer_keys, parse_answer_string, 
-                                   remove_exam_headers, get_question_types, get_existing_answers,
-                                   add_question_comments, manage_question_layout, 
-                                   basic_standardize) 
-from xu_ly_toan.trac_nghiem import convert_trac_nghiem
-from xu_ly_toan.dung_sai import convert_dung_sai
-from xu_ly_toan.tra_loi_ngan import convert_tra_loi_ngan
+from noi_dung_chu import NOI_DUNG_HUONG_DAN, THONG_TIN_UNG_DUNG
+from math_utils import (process_formatting, inject_answer_keys, parse_answer_string, 
+                        remove_exam_headers, get_question_types, get_existing_answers,
+                        add_question_comments, manage_question_layout, 
+                        basic_standardize) 
+from trac_nghiem import convert_trac_nghiem
+from dung_sai import convert_dung_sai
+from tra_loi_ngan import convert_tra_loi_ngan
 
 # --- CẤU HÌNH MẶC ĐỊNH ---
 LOGIC_KEYS = ['c_url', 'c_space', 'c_dec', 'c_dol', 'c_frac', 'c_sys', 'c_delim', 'c_dot', 'c_smart', 
@@ -229,4 +227,5 @@ def cb_save_gui_answers():
     if final:
         new_text = inject_answer_keys(st.session_state.editor_content, final)
         push_history(new_text)
+
         st.toast("💾 Đã lưu!")
