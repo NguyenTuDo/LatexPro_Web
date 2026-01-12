@@ -1,0 +1,5 @@
+from giao_dien.khung_chinh import App
+
+if __name__ == "__main__":
+    app = App()
+    app.mainloop()
