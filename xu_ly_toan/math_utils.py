@@ -77,7 +77,7 @@ def center_tabular_elements(text):
         return f"\\begin{{center}}\n{match.group('core')}\n\\end{{center}}"
     return re.sub(pattern, replacer, text, flags=re.DOTALL)
 
-# [MỚI] Hàm bọc cấu trúc Main Ansbook
+# [CẬP NHẬT] Hàm bọc cấu trúc Main Ansbook với lệnh riêng cho từng phần
 def wrap_exam_structure(text):
     if not text: return ""
     
@@ -99,11 +99,11 @@ def wrap_exam_structure(text):
         else:
             tn_blocks.append(b)
             
-    # Helper wrap từng phần
-    def make_section(content_list, phan_label, comment):
+    # Helper wrap từng phần với tham số command (lệnh đầu nhóm)
+    def make_section(content_list, phan_label, comment, command):
         if not content_list: return ""
         content = "\n\n".join(content_list)
-        return (f"\\caulc\n"
+        return (f"{command}\n"
                 f"\\Opensolutionfile{{ans}}[ans/ans\\currfilebase-Phan-{phan_label}]\n"
                 f"%{comment}\n"
                 f"{content}\n"
@@ -111,17 +111,17 @@ def wrap_exam_structure(text):
 
     body_parts = []
     
-    # Phần I: Trắc nghiệm
+    # Phần I: Trắc nghiệm -> Dùng \cautn
     if tn_blocks:
-        body_parts.append(make_section(tn_blocks, "I", "NHÓM CÂU TRẮC NGHIỆM"))
+        body_parts.append(make_section(tn_blocks, "I", "NHÓM CÂU TRẮC NGHIỆM", "\\cautn"))
         
-    # Phần II: Đúng Sai
+    # Phần II: Đúng Sai -> Dùng \cauds
     if tf_blocks:
-        body_parts.append(make_section(tf_blocks, "II", "NHÓM CÂU ĐÚNG SAI"))
+        body_parts.append(make_section(tf_blocks, "II", "NHÓM CÂU ĐÚNG SAI", "\\cauds"))
         
-    # Phần III: Trả lời ngắn
+    # Phần III: Trả lời ngắn -> Dùng \caukq
     if sa_blocks:
-        body_parts.append(make_section(sa_blocks, "III", "NHÓM CÂU TRẢ LỜI NGẮN"))
+        body_parts.append(make_section(sa_blocks, "III", "NHÓM CÂU TRẢ LỜI NGẮN", "\\caukq"))
         
     full_content = "\n\n".join(body_parts)
     
