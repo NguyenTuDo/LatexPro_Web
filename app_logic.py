@@ -9,13 +9,12 @@ from cau_hinh.noi_dung_chu import NOI_DUNG_HUONG_DAN, THONG_TIN_UNG_DUNG
 from xu_ly_toan.math_utils import (process_formatting, inject_answer_keys, parse_answer_string, 
                                    remove_exam_headers, get_question_types, get_existing_answers,
                                    add_question_comments, manage_question_layout, 
-                                   basic_standardize, wrap_exam_structure) # [IMPORT THÊM wrap_exam_structure]
+                                   basic_standardize, wrap_exam_structure)
 from xu_ly_toan.trac_nghiem import convert_trac_nghiem
 from xu_ly_toan.dung_sai import convert_dung_sai
 from xu_ly_toan.tra_loi_ngan import convert_tra_loi_ngan
 
 # --- CẤU HÌNH MẶC ĐỊNH ---
-# [XÓA] c_main_struct ra khỏi danh sách checkbox
 LOGIC_KEYS = ['c_url', 'c_space', 'c_dec', 'c_dol', 'c_frac', 'c_sys', 'c_delim', 'c_dot', 'c_smart', 
               'c_int', 'c_vec', 'c_colon']
 DEFAULTS =   [True,    True,      True,    True,    True,     True,    False,     False,   True,
@@ -27,6 +26,10 @@ def init_session_state():
     if "history" not in st.session_state: st.session_state.history = [""]
     if "history_idx" not in st.session_state: st.session_state.history_idx = 0
     if "auto_beautify_after_convert" not in st.session_state: st.session_state.auto_beautify_after_convert = True
+    
+    # Biến chứa thông báo Popup
+    if "msg_toast" not in st.session_state: st.session_state.msg_toast = None
+
     for k, d in zip(LOGIC_KEYS, DEFAULTS):
         if k not in st.session_state: st.session_state[k] = d
 
@@ -37,47 +40,47 @@ def push_history(new_content):
     st.session_state.history_idx += 1
     st.session_state.editor_content = new_content
 
+def show_popup(msg):
+    st.session_state.msg_toast = msg
+
 def cb_undo():
     if st.session_state.history_idx > 0:
         st.session_state.history_idx -= 1
         st.session_state.editor_content = st.session_state.history[st.session_state.history_idx]
-        st.toast("↩️ Undo")
+        show_popup("↩️ Undo thành công")
 
 def cb_redo():
     if st.session_state.history_idx < len(st.session_state.history) - 1:
         st.session_state.history_idx += 1
         st.session_state.editor_content = st.session_state.history[st.session_state.history_idx]
-        st.toast("↪️ Redo")
+        show_popup("↪️ Redo thành công")
 
 def get_theme_css():
     if st.session_state.is_dark_mode:
-        t = { "bg_app": "#1e1e1e", "text_main": "#d4d4d4", "bg_sidebar": "#252526", "bg_editor": "#1e1e1e", "border_editor": "#3e3e42", "bg_panel": "#252526", "border_panel": "#3e3e42", "header": "#858585", "text_editor": "#9cdcfe" }
+        t = { "bg_app": "#1e1e1e", "text_main": "#d4d4d4", "bg_sidebar": "#252526", "bg_editor": "#1e1e1e", "border_editor": "#3e3e42", "bg_panel": "#252526", "border_panel": "#3e3e42", "header": "#858585", "text_editor": "#4daafc" }
     else:
-        t = { "bg_app": "#ffffff", "text_main": "#2c3e50", "bg_sidebar": "#f8f9fa", "bg_editor": "#ffffff", "border_editor": "#ced4da", "bg_panel": "#f8f9fa", "border_panel": "#e9ecef", "header": "#666", "text_editor": "#0033cc" }
-    
-    # CSS nút vàng cho Ansbook
-    custom_btn_css = """
-    /* Style riêng cho nút Ansbook (dựa vào key) */
-    div.stButton > button:active { transform: scale(0.98); }
-    """
+        t = { "bg_app": "#ffffff", "text_main": "#2c3e50", "bg_sidebar": "#f8f9fa", "bg_editor": "#ffffff", "border_editor": "#ced4da", "bg_panel": "#f8f9fa", "border_panel": "#e9ecef", "header": "#666", "text_editor": "#0044ff" }
     
     return f"""
     <style>
-        /* 1. Ẩn Header mặc định (chứa biểu tượng GitHub, Fork) */
-        header {{ visibility: hidden; }}
-        
-        /* 2. Ẩn Footer mặc định (dòng chữ Made with Streamlit) */
-        footer {{ visibility: hidden; }}
-        
-        /* 3. Ẩn Menu chính (nút ba chấm ở góc phải) */
-        #MainMenu {{ visibility: hidden; }}
-        
-        /* 4. Đảm bảo nội dung không bị đẩy xuống quá sâu sau khi ẩn Header */
+        [data-testid="stHeader"], header {{ display: none !important; }}
+        footer {{ display: none !important; }}
+        [data-testid="stToolbar"] {{ display: none !important; }}
+        [data-testid="stDecoration"] {{ display: none !important; }}
+        [data-testid="stSidebarCollapsedControl"] {{ display: none !important; }}
         .stApp {{ margin-top: -55px; }}
-
-        /* ... (Các phần CSS cũ của bạn) ... */
-        .stApp {{ background-color: {t['bg_app']}; color: {t['text_main']}; }}
-        /* ... tiếp tục các dòng CSS khác ... */
+        .custom-sidebar-btn button {{
+            background: transparent !important;
+            border: 1px solid #ddd !important;
+            color: #666 !important;
+            border-radius: 20px !important;
+            font-size: 13px !important;
+            padding: 2px 10px !important;
+        }}
+        .custom-sidebar-btn button:hover {{
+            border-color: {t['text_editor']} !important;
+            color: {t['text_editor']} !important;
+        }}
     </style>
     """
 
@@ -104,13 +107,14 @@ def calculate_stats(text):
             elif t == 'SA': stats["SA_Done"] += 1
     return stats
 
-# --- CALLBACKS ---
+# --- CALLBACKS (ĐÃ SỬA: DÙNG SPINNER THAY CHO STATUS BOX) ---
 
 def cb_convert_auto():
     raw = st.session_state.editor_content
-    if not raw.strip(): st.toast("⚠️ Trống!"); return
-    with st.status("Đang xử lý...", expanded=False) as s:
-        s.write("🧹 Dọn dẹp & Phân loại...")
+    if not raw.strip(): show_popup("⚠️ Nội dung trống!"); return
+    
+    # [THAY ĐỔI] Dùng spinner: Chỉ hiện vòng quay khi đang chạy, xong là biến mất luôn
+    with st.spinner("Đang xử lý..."):
         raw = remove_exam_headers(raw)
         raw = basic_standardize(raw)
         blocks = re.split(r'(?i)(?=Câu\s*\d+)', raw)
@@ -128,7 +132,6 @@ def cb_convert_auto():
         text_struct = "\n\n".join(res)
         
         if st.session_state.get("auto_beautify_after_convert", False):
-            s.write("✨ Đang format chi tiết...")
             cfg = {k: st.session_state[k] for k in LOGIC_KEYS}
             params = {
                 'use_smart_format': cfg['c_smart'], 'use_clean_url': cfg['c_url'], 'use_clean_space': cfg['c_space'],
@@ -145,41 +148,44 @@ def cb_convert_auto():
             msg = "✅ Chuẩn hóa cấu trúc xong!"
 
         push_history(final_text)
-        s.update(label=msg, state="complete")
+    
+    # Khi spinner tắt đi, Popup mới hiện ra báo thành công
+    show_popup(msg)
 
 def cb_run_beauty():
     txt = st.session_state.editor_content
     if not txt.strip(): return
-    cfg = {k: st.session_state[k] for k in LOGIC_KEYS}
-    params = {
-        'use_smart_format': cfg['c_smart'], 'use_clean_url': cfg['c_url'], 'use_clean_space': cfg['c_space'],
-        'use_fix_decimal': cfg['c_dec'], 'use_add_dollar': cfg['c_dol'],
-        'use_frac_dfrac': cfg['c_frac'], 'use_convert_system': cfg['c_sys'],
-        'use_remove_delimiter': cfg['c_delim'], 'use_dot_multiplication': cfg['c_dot'],
-        'use_format_integral': cfg['c_int'], 'use_format_vector': cfg['c_vec'], 'use_format_colon': cfg['c_colon'],
-        'use_add_comment': False, 'image_layout_mode': 'ignore'
-    }
-    new_text = process_formatting(txt, **params)
-    push_history(new_text)
-    st.toast("⚡ Đã làm đẹp!")
+    
+    # Thêm spinner cho nút Làm đẹp
+    with st.spinner("Đang làm đẹp..."):
+        cfg = {k: st.session_state[k] for k in LOGIC_KEYS}
+        params = {
+            'use_smart_format': cfg['c_smart'], 'use_clean_url': cfg['c_url'], 'use_clean_space': cfg['c_space'],
+            'use_fix_decimal': cfg['c_dec'], 'use_add_dollar': cfg['c_dol'],
+            'use_frac_dfrac': cfg['c_frac'], 'use_convert_system': cfg['c_sys'],
+            'use_remove_delimiter': cfg['c_delim'], 'use_dot_multiplication': cfg['c_dot'],
+            'use_format_integral': cfg['c_int'], 'use_format_vector': cfg['c_vec'], 'use_format_colon': cfg['c_colon'],
+            'use_add_comment': False, 'image_layout_mode': 'ignore'
+        }
+        new_text = process_formatting(txt, **params)
+        push_history(new_text)
+        
+    show_popup("⚡ Đã làm đẹp xong!")
 
-# [MỚI] Callback riêng cho nút Ansbook
 def cb_run_main_struct():
     txt = st.session_state.editor_content
     if not txt.strip(): 
-        st.toast("⚠️ Trống!")
+        show_popup("⚠️ Nội dung trống!")
         return
     
-    # Chỉ chạy hàm wrap cấu trúc
     new_text = wrap_exam_structure(txt)
     
     if new_text == txt:
-        st.toast("⚠️ Không tìm thấy cấu trúc câu hỏi (ex)!")
+        show_popup("⚠️ Không tìm thấy cấu trúc câu hỏi (ex)!")
     else:
         push_history(new_text)
-        st.toast("✅ Đã đóng gói Main (Ansbook)!", icon="📦")
+        show_popup("📦 Đóng gói Main (Ansbook) thành công!")
 
-# ... (Các hàm còn lại: cb_action_image, cb_add_tag, cb_copy_all, cb_save_gui_answers GIỮ NGUYÊN) ...
 def cb_action_image(mode):
     txt = st.session_state.editor_content
     if not txt: return
@@ -187,7 +193,7 @@ def cb_action_image(mode):
     if mode in map_mode:
         new_text = manage_question_layout(txt, map_mode[mode])
         push_history(new_text)
-        st.toast(f"🖼️ {mode}")
+        show_popup(f"🖼️ Đã chỉnh ảnh: {mode}")
 
 def cb_add_tag(mode):
     txt = st.session_state.editor_content
@@ -202,13 +208,13 @@ def cb_add_tag(mode):
             else: res.append(p)
         new_text = "".join(res)
     push_history(new_text)
-    st.toast(f"🏷️ Thêm {mode}")
+    show_popup(f"🏷️ Đã thêm thẻ {mode}")
 
 def cb_copy_all():
     txt = st.session_state.editor_content
     if txt:
-        try: pyperclip.copy(txt); st.toast("📋 Đã Copy!")
-        except: st.warning("Dùng Ctrl+A -> Ctrl+C")
+        try: pyperclip.copy(txt); show_popup("📋 Đã Copy vào bộ nhớ!")
+        except: show_popup("⚠️ Lỗi Copy! Hãy dùng Ctrl+A -> Ctrl+C")
 
 def cb_save_gui_answers():
     final = {}
@@ -228,12 +234,11 @@ def cb_save_gui_answers():
     if final:
         new_text = inject_answer_keys(st.session_state.editor_content, final)
         push_history(new_text)
-        st.toast("💾 Đã lưu!")
+        show_popup("💾 Đã lưu đáp án vào Editor!")
 
 def cb_load_sample():
-    # Kiểm tra nếu Editor đang có nội dung (không phải rỗng)
     if st.session_state.editor_content and st.session_state.editor_content.strip():
-        st.toast("⛔ Editor đang có dữ liệu! Vui lòng xóa trắng trước khi nạp mẫu.", icon="⚠️")
+        show_popup("⚠️ Editor đang có dữ liệu! Hãy xóa trước.")
         return
     sample_text = r"""PHẦN I. (3.0 điểm) Trắc nghiệm nhiều phương án. Thí sinh làm từ câu 1 đến câu 12. Mỗi câu thí sinh chỉ chọn một phương án.
 Câu 1: Chuẩn bị cho cuộc thi nhảy hiện đại. Bạn Ri tập nhảy trong 18 ngày và bạn ấy thống kê lại ở bảng sau:
@@ -265,7 +270,5 @@ d) Diện tích $S$ của hình chữ nhật $E F I H$ của phần in chữ đ�
 PHẦN III. (3.0 điểm) Thí sinh trả lời từ câu 1 đến câu 4.
 Câu 1: Khối lượng $q(\mathrm{~kg})$ của một mặt hàng mà cửa tiệm bán được trong một ngày phụ thuộc vào giá bán $p$ (nghìn đồng/kg) theo công thức $p=15-\frac{1}{2} q$. Doanh thu từ việc bán mặt hàng trên của cửa tiệm được tính theo công thức $R=p . q$. Tìm giá bán mỗi kilôgam sản phẩm để đạt được doanh thu cao nhất?
 """
-    # Nếu editor đang trống hoặc người dùng muốn ghi đè, ta nạp vào
-    # Để an toàn, ta luôn push vào history để họ có thể Undo
     push_history(sample_text)
-    st.toast("📄 Đã nạp code mẫu!", icon="✅")
+    show_popup("✅ Đã nạp đề mẫu thành công!")
