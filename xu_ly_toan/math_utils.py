@@ -1,95 +1,152 @@
 import re
 
 # ============================================================
-# PHẦN 1: CÁC HÀM CƠ BẢN (DÙNG CHO CHUẨN HÓA)
+# PHẦN 1: CÁC HÀM CƠ BẢN
 # ============================================================
 
 def remove_exam_headers(text):
     if not text: return ""
-    patterns = [r'^PHẦN\s+[IVX]+\..*$', r'^Thí\s+sinh\s+trả\s+lời.*$', r'^Mỗi\s+câu\s+hỏi.*$', r'^Trong\s+mỗi\s+ý.*$', r'^Câu\s+trắc\s+nghiệm.*$']
+    text = re.sub(r'(?ism)^PHẦN\s+[IVX]+.*?(?=^\s*Câu)', '', text)
+    patterns = [r'^PHẦN\s+[IVX]+\..*$', r'^Thí\s+sinh\s+trả\s+lời.*$', r'^Mỗi\s+câu\s+hỏi.*$', r'^Trong\s+mỗi\s+ý.*$', r'^Câu\s+trắc\s+nghiệm.*$', r'^Đề\s+thi\s+gồm.*$', r'^Thời\s+gian\s+làm\s+bài.*$', r'^Họ\s+và\s+tên.*$', r'^Mã\s+đề.*$', r'^Lớp:.*$']
     combined_pattern = r'(?im)^(' + '|'.join(patterns).replace('.', r'\.') + r').*$'
-    clean_text = re.sub(combined_pattern, '', text)
-    clean_text = re.sub(r'\n{3,}', '\n\n', clean_text)
-    return clean_text.strip()
+    text = re.sub(combined_pattern, '', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
 
 def clean_mathpix_urls(text):
     if not text: return ""
     text = re.sub(r"!\[\]\(https?://cdn\.mathpix\.com\S+\)", r"%HÌNH VẼ", text)
     return re.sub(r"https?://cdn\.mathpix\.com\S+", r"%HÌNH VẼ", text)
 
-def fix_decimal_comma(text):
+def fix_decimal_comma_only(text):
     if not text: return ""
-    return re.sub(r'(\d)\.(\d)', r'\1{,}\2', text)
+    return re.sub(r'(?<![\d])(\d+)[.,](\d+)(?![\d])', r'\1{,}\2', text)
 
 def clean_whitespace(text):
     if not text: return ""
-    
-    # 1. Gom nhóm O x y z (quan trọng cho hệ trục)
     text = re.sub(r'\bO\s+x\s+y\s+z\b', 'Oxyz', text)
     text = re.sub(r'\bO\s+x\s+y\b', 'Oxy', text)
-    
-    # 2. Xử lý dấu phẩy bị tách rời (A , B -> A, B)
-    text = re.sub(r'\s+,', ',', text)
-    
-    # 3. Gom khoảng trắng thừa
-    lines = [line.strip() for line in text.split('\n')]
-    text = '\n'.join(lines)
     text = re.sub(r'[ \t]+', ' ', text)
-    text = re.sub(r'\n{3,}', '\n\n', text)
+    lines = [line.strip() for line in text.split('\n')]
+    cleaned_lines = []
+    for line in lines:
+        if line: cleaned_lines.append(line)
+        else:
+            if cleaned_lines and cleaned_lines[-1] != "": cleaned_lines.append("")
+    text = '\n'.join(cleaned_lines)
     return text.strip()
 
 def fix_spacing_semantics(text):
     if not text: return ""
-
-    # BƯỚC 1: Tách Math ($) khỏi Text dính liền
     text = re.sub(r'(?<=[^\s\(\[\{])\$', ' $', text)
     text = re.sub(r'\$(?=[^\s\)\]\}\.,;:])', '$ ', text)
-
-    # BƯỚC 2: Hút chân không bên trong Math ($ nội dung $)
-    def stripper(match):
-        return f"${match.group(1).strip()}$"
-    text = re.sub(r'\$([^\$\n]+?)\$', stripper, text)
-
-    # BƯỚC 3: Xử lý Vector bị rời chữ (\overrightarrow{O E} -> {OE})
+    def math_processor(match):
+        content = match.group(1).strip()
+        for _ in range(4): 
+            new_content = re.sub(r'([A-Z](?:\')?)\s+(?=[A-Z])', r'\1', content)
+            if new_content == content: break
+            content = new_content
+        content = re.sub(r'([A-Z]{2,}(?:\')?)\s*\\cdot\s*([A-Z]{2,})', r'\1.\2', content)
+        return f"${content}$"
+    text = re.sub(r'\$([^\$\n]+?)\$', math_processor, text)
     text = re.sub(r'\\overrightarrow\{\s*([A-Za-z])\s+([A-Za-z])\s*\}', r'\\overrightarrow{\1\2}', text)
-    # Xử lý cả kiểu \overrightarrow {AB} (có dấu cách sau lệnh)
     text = re.sub(r'\\overrightarrow\s+\{\s*([A-Za-z0-9]+)\s*\}', r'\\overrightarrow{\1}', text)
-
-    # BƯỚC 4: Rút gọn tọa độ ( -2 ; 4 ; -3 ) -> (-2;4;-3)
-    # Logic: Tìm cụm (A; B; C) hoặc (A; B) mà A,B,C chỉ gồm số/chữ/-/.
-    # Để tránh xóa nhầm khoảng trắng trong câu văn (nếu có), ta chỉ target các ký tự đơn giản.
-    def compact_coords(match):
-        # match.group(0) là toàn bộ cụm ( -2 ; 4 ; -3 )
-        # replace(" ", "") sẽ xóa sạch dấu cách
-        return match.group(0).replace(" ", "")
-
-    coord_pattern = r'\(\s*[-\w\.,]+\s*;\s*[-\w\.,]+(?:\s*;\s*[-\w\.,]+)?\s*\)'
+    def compact_coords(match): 
+        return match.group(0).replace(" ", "").replace("\n", "")
+    coord_pattern = r'[\(\[\{]\s*[-\w\.,]+\s*;\s*[-\w\.,]+(?:\s*;\s*[-\w\.,]+)?\s*[\)\]\}]'
     text = re.sub(coord_pattern, compact_coords, text)
-
-    # BƯỚC 5: Tách nhãn đáp án bị dính (A.Text -> A. Text)
     text = re.sub(r'(^|[\s])([A-D])[\.\)](?=[^\s])', r'\1\2. ', text)
-    
+    return text
+
+def fix_latex_syntax_and_symbols(text):
+    if not text: return ""
+    text = re.sub(r'\^\{\\prime\}', "'", text)
+    text = re.sub(r'\^\\prime', "'", text)
+    text = re.sub(r'\\backslash', r'\\setminus', text)
+    text = re.sub(r'(?<!\\mathrm\{)\bP\s*\(', r'\\mathrm{P}(', text)
+    pattern_AC = r'(?<!\\mathrm\{)\b([AC])\s*(_\s*(?:\{[^{}]*\}|[\w]))\s*(\^\s*(?:\{[^{}]*\}|[\w]))'
+    text = re.sub(pattern_AC, r'\\mathrm{\1}\2\3', text)
+    pattern_P = r'(?<!\\mathrm\{)\bP\s*(_\s*(?:\{[^{}]*\}|[\w]))'
+    text = re.sub(pattern_P, r'\\mathrm{P}\1', text)
     return text
 
 def center_tabular_elements(text):
     if not text: return ""
-    pattern = r'(\\begin\{tabular\}.*?\\end\{tabular\})'
+    pattern = r'(?:\\begin\{center\}\s*)*(?P<core>\\begin\{tabular\}.*?\\end\{tabular\})(?:\s*\\end\{center\})*'
     def replacer(match):
-        return f"\\begin{{center}}\n{match.group(1)}\n\\end{{center}}"
+        return f"\\begin{{center}}\n{match.group('core')}\n\\end{{center}}"
     return re.sub(pattern, replacer, text, flags=re.DOTALL)
 
+# [MỚI] Hàm bọc cấu trúc Main Ansbook
+def wrap_exam_structure(text):
+    if not text: return ""
+    
+    # 1. Tách các block câu hỏi
+    pattern = r'(\\begin\{ex\}.*?\\end\{ex\})'
+    blocks = re.findall(pattern, text, flags=re.DOTALL)
+    
+    if not blocks: return text # Không tìm thấy câu hỏi thì trả về nguyên gốc
+    
+    tn_blocks = [] # Trắc nghiệm
+    tf_blocks = [] # Đúng Sai
+    sa_blocks = [] # Trả lời ngắn
+    
+    for b in blocks:
+        if r'\choiceTF' in b:
+            tf_blocks.append(b)
+        elif r'\shortans' in b:
+            sa_blocks.append(b)
+        else:
+            tn_blocks.append(b)
+            
+    # Helper wrap từng phần
+    def make_section(content_list, phan_label, comment):
+        if not content_list: return ""
+        content = "\n\n".join(content_list)
+        return (f"\\caulc\n"
+                f"\\Opensolutionfile{{ans}}[ans/ans\\currfilebase-Phan-{phan_label}]\n"
+                f"%{comment}\n"
+                f"{content}\n"
+                f"\\Closesolutionfile{{ans}}")
+
+    body_parts = []
+    
+    # Phần I: Trắc nghiệm
+    if tn_blocks:
+        body_parts.append(make_section(tn_blocks, "I", "NHÓM CÂU TRẮC NGHIỆM"))
+        
+    # Phần II: Đúng Sai
+    if tf_blocks:
+        body_parts.append(make_section(tf_blocks, "II", "NHÓM CÂU ĐÚNG SAI"))
+        
+    # Phần III: Trả lời ngắn
+    if sa_blocks:
+        body_parts.append(make_section(sa_blocks, "III", "NHÓM CÂU TRẢ LỜI NGẮN"))
+        
+    full_content = "\n\n".join(body_parts)
+    
+    # Wrap tổng thể
+    final_text = (f"\\Opensolutionfile{{ansbook}}[ans/ansb\\currfilebase]\n"
+                  f"{full_content}\n"
+                  f"\\Closesolutionfile{{ansbook}}\n"
+                  f"\\begin{{indapan}}\n"
+                  f"    {{ans/ans\\currfilebase}}\n"
+                  f"\\end{{indapan}}")
+    
+    return final_text
+
 def basic_standardize(text):
-    """Hàm chạy khi bấm nút 'TỰ ĐỘNG CHUẨN HÓA'"""
     if not text: return ""
     text = clean_mathpix_urls(text)
-    text = fix_decimal_comma(text)
-    text = clean_whitespace(text)      
-    text = fix_spacing_semantics(text) # Đã bao gồm logic rút gọn tọa độ
+    text = clean_whitespace(text)
+    text = fix_decimal_comma_only(text)
+    text = fix_spacing_semantics(text)
+    text = fix_latex_syntax_and_symbols(text)
     text = center_tabular_elements(text)
     return text.strip()
 
 # ============================================================
-# PHẦN 2: LÀM ĐẸP TOÁN HỌC (NÂNG CAO - FORMATTING)
+# PHẦN 2: LÀM ĐẸP TOÁN HỌC
 # ============================================================
 
 def format_integrals(text):
@@ -194,7 +251,7 @@ def add_question_comments(text):
         else: processed.append(part)
     return "".join(processed)
 
-def add_math_delimiters(text):
+def add_math_delimiters_and_fix_numbers(text):
     if not text: return ""
     protected_envs = ["equation", "align", "gather", "multline", "flalign", "split", "alignat", "tikzpicture", "array", "cases", "matrix", "pmatrix", "bmatrix", "vmatrix", "Vmatrix"]
     env_regex = "|".join(protected_envs)
@@ -204,19 +261,20 @@ def add_math_delimiters(text):
     for match in re.finditer(pattern, text, flags=re.DOTALL):
         text_part = text[last_end:match.start()]
         if text_part:
-            text_part = re.sub(r'(?<![\d\w\$\\])(\d+)[.,](\d+)(?![\d\w\$\\])', r'$\1{,}\2$', text_part)
+            text_part = re.sub(r'(?<![\d\w\$\\])(\d+)(?:[.,]|\{,\})(\d+)(?![\d\w\$\\])', r'$\1{,}\2$', text_part)
             text_part = re.sub(r'(?<![\d\w\$\\\{,])\b(\d+)\b(?![\d\w\$\}\{,])', r'$\1$', text_part)
             processed_parts.append(text_part)
         processed_parts.append(match.group(0))
         last_end = match.end()
     text_part = text[last_end:]
     if text_part:
-        text_part = re.sub(r'(?<![\d\w\$\\])(\d+)[.,](\d+)(?![\d\w\$\\])', r'$\1{,}\2$', text_part)
+        text_part = re.sub(r'(?<![\d\w\$\\])(\d+)(?:[.,]|\{,\})(\d+)(?![\d\w\$\\])', r'$\1{,}\2$', text_part)
         text_part = re.sub(r'(?<![\d\w\$\\\{,])\b(\d+)\b(?![\d\w\$\}\{,])', r'$\1$', text_part)
         processed_parts.append(text_part)
     return "".join(processed_parts)
 
-# === MASTER FUNCTION: PROCESS FORMATTING ===
+def add_math_delimiters(text):
+    return add_math_delimiters_and_fix_numbers(text)
 
 def process_formatting(text, 
                        use_clean_url=False, use_clean_space=False, use_fix_decimal=False, 
@@ -226,44 +284,43 @@ def process_formatting(text,
                        use_smart_format=False, 
                        use_format_integral=False, 
                        use_format_vector=False,   
-                       use_format_colon=False,    
+                       use_format_colon=False,
+                       use_main_struct=False, # [MỚI]
                        image_layout_mode="ignore"):
     if not text: return ""
-    
-    # 1. Cơ bản
+    if use_smart_format: text = smart_cleanup(text)
     if use_clean_url:   text = clean_mathpix_urls(text)
     
     if use_clean_space: 
         text = clean_whitespace(text)
-        text = fix_spacing_semantics(text) # [UPDATE] Đã bao gồm rút gọn tọa độ
-        
-    if use_fix_decimal: text = fix_decimal_comma(text)
+        text = fix_decimal_comma_only(text)
+        text = fix_spacing_semantics(text)
+        text = fix_latex_syntax_and_symbols(text)
     
-    # 2. Làm đẹp nâng cao
+    if use_add_dollar:
+        text = add_math_delimiters_and_fix_numbers(text)
+    elif use_fix_decimal:
+        text = fix_decimal_comma_only(text)
+    
     if use_remove_delimiter: text = remove_superfluous_delimiters(text)
     if use_dot_multiplication: text = replace_dot_multiplication(text)
-    if use_smart_format: text = smart_cleanup(text)
-    
-    # 3. Tính năng MỚI
     if use_format_integral: text = format_integrals(text)
     if use_format_vector: text = format_vectors(text)
     if use_format_colon: text = format_colon_geometry(text)
-    
-    # 4. Cấu trúc
     if image_layout_mode != "ignore": text = manage_question_layout(text, image_layout_mode)
     if use_frac_dfrac:  text = change_frac_to_dfrac(text)
     if use_convert_system: text = convert_systems(text)
-    if use_add_dollar:  text = add_math_delimiters(text)
     if use_add_comment: text = add_question_comments(text)
     
-    # 5. Luôn chạy cuối
     text = center_tabular_elements(text)
+    
+    # [MỚI] Chạy cấu trúc Main ở bước cuối cùng
+    if use_main_struct:
+        text = wrap_exam_structure(text)
+        
     return text
 
-# ============================================================
-# PHẦN 3: LAYOUT & XỬ LÝ KHÁC
-# ============================================================
-
+# === LAYOUT HELPERS (GIỮ NGUYÊN) ===
 def extract_bracket_content(text, start_idx):
     depth = 0; found_start = False; real_start = -1
     for i in range(start_idx, len(text)):
@@ -287,7 +344,6 @@ def manage_question_layout(text, mode="default"):
         else: main_body = content
         shortans = ""; sa_match = re.search(r'(\\shortans(?:\[.*?\])?\{.*?\})', main_body, flags=re.DOTALL)
         if sa_match: shortans = sa_match.group(1); main_body = main_body.replace(shortans, "")
-        
         image_code = ""; text_content = main_body.strip()
         center_match = re.search(r'\\begin\{center\}(.*?)\\end\{center\}', main_body, flags=re.DOTALL)
         if center_match:
@@ -309,7 +365,6 @@ def manage_question_layout(text, mode="default"):
                 if text_extracted or img_extracted:
                     text_content = f"{pre_text}\n{text_extracted}\n{post_text}".strip()
                     image_code = img_extracted.strip()
-
         if not image_code: return full_ex
         new_body = ""
         if mode == "default": new_body = f"{text_content}\n\\begin{{center}}\n{image_code}\n\\end{{center}}"

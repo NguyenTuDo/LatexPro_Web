@@ -1,19 +1,21 @@
+# [File: app_logic.py]
 import streamlit as st
 import re
 import pyperclip
 
-# --- IMPORT TỪ FILE CẤU HÌNH DUY NHẤT ---
+# --- IMPORT ---
 from cau_hinh.noi_dung_chu import NOI_DUNG_HUONG_DAN, THONG_TIN_UNG_DUNG
 
 from xu_ly_toan.math_utils import (process_formatting, inject_answer_keys, parse_answer_string, 
                                    remove_exam_headers, get_question_types, get_existing_answers,
                                    add_question_comments, manage_question_layout, 
-                                   basic_standardize) 
+                                   basic_standardize, wrap_exam_structure) # [IMPORT THÊM wrap_exam_structure]
 from xu_ly_toan.trac_nghiem import convert_trac_nghiem
 from xu_ly_toan.dung_sai import convert_dung_sai
 from xu_ly_toan.tra_loi_ngan import convert_tra_loi_ngan
 
 # --- CẤU HÌNH MẶC ĐỊNH ---
+# [XÓA] c_main_struct ra khỏi danh sách checkbox
 LOGIC_KEYS = ['c_url', 'c_space', 'c_dec', 'c_dol', 'c_frac', 'c_sys', 'c_delim', 'c_dot', 'c_smart', 
               'c_int', 'c_vec', 'c_colon']
 DEFAULTS =   [True,    True,      True,    True,    True,     True,    False,     False,   True,
@@ -24,6 +26,7 @@ def init_session_state():
     if "is_dark_mode" not in st.session_state: st.session_state.is_dark_mode = False
     if "history" not in st.session_state: st.session_state.history = [""]
     if "history_idx" not in st.session_state: st.session_state.history_idx = 0
+    if "auto_beautify_after_convert" not in st.session_state: st.session_state.auto_beautify_after_convert = True
     for k, d in zip(LOGIC_KEYS, DEFAULTS):
         if k not in st.session_state: st.session_state[k] = d
 
@@ -46,96 +49,54 @@ def cb_redo():
         st.session_state.editor_content = st.session_state.history[st.session_state.history_idx]
         st.toast("↪️ Redo")
 
-# ... (Phần import và code trên giữ nguyên) ...
-
 def get_theme_css():
-    # BẢNG MÀU DARK MODE HIỆN ĐẠI (VS CODE STYLE)
     if st.session_state.is_dark_mode:
-        t = {
-            "bg_app": "#1e1e1e",           # Nền chính xám chì (không đen thui)
-            "text_main": "#d4d4d4",        # Chữ trắng ngà (dịu mắt)
-            "bg_sidebar": "#252526",       # Sidebar tối hơn một chút
-            "bg_editor": "#1e1e1e",        # Nền editor tiệp màu nền
-            "border_editor": "#3e3e42",    # Viền editor xám nhẹ
-            "bg_panel": "#252526",         # Nền panel công cụ
-            "border_panel": "#3e3e42",     # Viền panel
-            "header": "#858585",           # Tiêu đề phụ màu xám
-            "text_editor": "#9cdcfe"       # Chữ Editor màu xanh nhạt (dễ đọc code)
-        }
+        t = { "bg_app": "#1e1e1e", "text_main": "#d4d4d4", "bg_sidebar": "#252526", "bg_editor": "#1e1e1e", "border_editor": "#3e3e42", "bg_panel": "#252526", "border_panel": "#3e3e42", "header": "#858585", "text_editor": "#9cdcfe" }
     else:
-        # BẢNG MÀU LIGHT MODE (GIỮ NGUYÊN)
-        t = {
-            "bg_app": "#ffffff", "text_main": "#2c3e50", "bg_sidebar": "#f8f9fa",
-            "bg_editor": "#ffffff", "border_editor": "#ced4da",
-            "bg_panel": "#f8f9fa", "border_panel": "#e9ecef", "header": "#666", 
-            "text_editor": "#0033cc"
-        }
+        t = { "bg_app": "#ffffff", "text_main": "#2c3e50", "bg_sidebar": "#f8f9fa", "bg_editor": "#ffffff", "border_editor": "#ced4da", "bg_panel": "#f8f9fa", "border_panel": "#e9ecef", "header": "#666", "text_editor": "#0033cc" }
+    
+    # CSS nút vàng cho Ansbook
+    custom_btn_css = """
+    /* Style riêng cho nút Ansbook (dựa vào key) */
+    div.stButton > button:active { transform: scale(0.98); }
+    """
     
     return f"""
     <style>
         .stApp {{ background-color: {t['bg_app']}; color: {t['text_main']}; }}
         .block-container {{ padding: 1rem 1.5rem !important; }}
         div[data-testid="stVerticalBlock"] {{ gap: 0.5rem !important; }}
-        
-        /* Tinh chỉnh Editor */
-        .stTextArea textarea {{
-            font-family: 'Consolas', 'JetBrains Mono', monospace !important;
-            font-size: 15px !important; 
-            line-height: 1.6 !important;
-            font-weight: 500 !important; 
-            color: {t['text_editor']} !important;
-            background-color: {t['bg_editor']} !important;
-            border: 1px solid {t['border_editor']} !important;
-            border-radius: 6px !important; 
-            padding: 12px !important;
-        }}
-        .stTextArea textarea:focus {{
-            border-color: #007fd4 !important; /* Viền xanh khi gõ */
-            box-shadow: 0 0 0 1px #007fd4 !important;
-        }}
-        
-        /* Tinh chỉnh Panel bên phải */
-        div[data-testid="column"]:nth-of-type(2) {{
-            background-color: {t['bg_panel']}; 
-            padding: 15px;
-            border-radius: 8px; 
-            border: 1px solid {t['border_panel']};
-        }}
-        
-        .tool-header {{
-            font-size: 12px; 
-            font-weight: 700; 
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: {t['header']}; 
-            margin-top: 15px; 
-            margin-bottom: 8px;
-            border-bottom: 1px solid {t['border_panel']};
-            padding-bottom: 4px;
-        }}
-        
-        /* Tinh chỉnh Tabs */
-        button[data-baseweb="tab"] {{
-            background-color: transparent !important;
-        }}
-        div[data-baseweb="tab-highlight"] {{
-            background-color: #007fd4 !important;
-        }}
+        .stTextArea textarea {{ font-family: 'Consolas', 'JetBrains Mono', monospace !important; font-size: 15px !important; line-height: 1.6 !important; font-weight: 500 !important; color: {t['text_editor']} !important; background-color: {t['bg_editor']} !important; border: 1px solid {t['border_editor']} !important; border-radius: 6px !important; padding: 12px !important; }}
+        .stTextArea textarea:focus {{ border-color: #007fd4 !important; box-shadow: 0 0 0 1px #007fd4 !important; }}
+        div[data-testid="column"]:nth-of-type(2) {{ background-color: {t['bg_panel']}; padding: 15px; border-radius: 8px; border: 1px solid {t['border_panel']}; }}
+        .tool-header {{ color: {t['header']}; margin-top: 15px; margin-bottom: 8px; border-bottom: 1px solid {t['border_panel']}; }}
+        button[data-baseweb="tab"] {{ background-color: transparent !important; }}
+        div[data-baseweb="tab-highlight"] {{ background-color: #007fd4 !important; }}
+        {custom_btn_css}
     </style>
     """
-    
-# ... (Các phần code dưới giữ nguyên) ...
 
 def calculate_stats(text):
-    if not text: return {"MC": 0, "TF": 0, "SA": 0, "MC_True": 0, "Total": 0}
+    if not text: return {"Total": 0, "MC_Done": 0, "MC_Total": 0, "TF_Done": 0, "TF_Total": 0, "SA_Done": 0, "SA_Total": 0}
     q_types = get_question_types(text)
-    stats = {"MC": 0, "TF": 0, "SA": 0, "MC_True": 0, "Total": len(q_types)}
-    for t in q_types.values(): 
-        if t in stats: stats[t] += 1
-    blocks = re.split(r'\\begin\{ex\}', text)
-    for block in blocks:
-        if r'\choice' in block and r'\True' in block and r'\choiceTF' not in block:
-            stats["MC_True"] += 1
+    existing = get_existing_answers(text)
+    stats = {"Total": len(q_types), "MC_Done": 0, "MC_Total": 0, "TF_Done": 0, "TF_Total": 0, "SA_Done": 0, "SA_Total": 0}
+    for q, t in q_types.items():
+        if t == 'MC': stats["MC_Total"] += 1
+        elif t == 'TF': stats["TF_Total"] += 1
+        elif t == 'SA': stats["SA_Total"] += 1
+        has_ans = False
+        ans_data = existing.get(q, [])
+        if t == 'MC':
+            if ans_data and len(ans_data) > 0: has_ans = True
+        elif t == 'TF':
+            if ans_data and len(ans_data) > 0: has_ans = True
+        elif t == 'SA':
+            if ans_data and str(ans_data[0]).strip(): has_ans = True
+        if has_ans:
+            if t == 'MC': stats["MC_Done"] += 1
+            elif t == 'TF': stats["TF_Done"] += 1
+            elif t == 'SA': stats["SA_Done"] += 1
     return stats
 
 # --- CALLBACKS ---
@@ -143,7 +104,8 @@ def calculate_stats(text):
 def cb_convert_auto():
     raw = st.session_state.editor_content
     if not raw.strip(): st.toast("⚠️ Trống!"); return
-    with st.status("Chuẩn hóa...", expanded=False) as s:
+    with st.status("Đang xử lý...", expanded=False) as s:
+        s.write("🧹 Dọn dẹp & Phân loại...")
         raw = remove_exam_headers(raw)
         raw = basic_standardize(raw)
         blocks = re.split(r'(?i)(?=Câu\s*\d+)', raw)
@@ -158,29 +120,61 @@ def cb_convert_auto():
                 else: r = convert_tra_loi_ngan(mp, sol)
                 res.append(r)
             except: res.append(b)
-        new_text = "\n\n".join(res)
-        push_history(new_text)
-        s.update(label="✅ Xong!", state="complete")
+        text_struct = "\n\n".join(res)
+        
+        if st.session_state.get("auto_beautify_after_convert", False):
+            s.write("✨ Đang format chi tiết...")
+            cfg = {k: st.session_state[k] for k in LOGIC_KEYS}
+            params = {
+                'use_smart_format': cfg['c_smart'], 'use_clean_url': cfg['c_url'], 'use_clean_space': cfg['c_space'],
+                'use_fix_decimal': cfg['c_dec'], 'use_add_dollar': cfg['c_dol'],
+                'use_frac_dfrac': cfg['c_frac'], 'use_convert_system': cfg['c_sys'],
+                'use_remove_delimiter': cfg['c_delim'], 'use_dot_multiplication': cfg['c_dot'],
+                'use_format_integral': cfg['c_int'], 'use_format_vector': cfg['c_vec'], 'use_format_colon': cfg['c_colon'],
+                'use_add_comment': False, 'image_layout_mode': 'ignore'
+            }
+            final_text = process_formatting(text_struct, **params)
+            msg = "✅ Chuẩn hóa & Làm đẹp xong!"
+        else:
+            final_text = text_struct
+            msg = "✅ Chuẩn hóa cấu trúc xong!"
+
+        push_history(final_text)
+        s.update(label=msg, state="complete")
 
 def cb_run_beauty():
     txt = st.session_state.editor_content
     if not txt.strip(): return
     cfg = {k: st.session_state[k] for k in LOGIC_KEYS}
     params = {
-        'use_clean_url': cfg['c_url'], 'use_clean_space': cfg['c_space'],
+        'use_smart_format': cfg['c_smart'], 'use_clean_url': cfg['c_url'], 'use_clean_space': cfg['c_space'],
         'use_fix_decimal': cfg['c_dec'], 'use_add_dollar': cfg['c_dol'],
         'use_frac_dfrac': cfg['c_frac'], 'use_convert_system': cfg['c_sys'],
         'use_remove_delimiter': cfg['c_delim'], 'use_dot_multiplication': cfg['c_dot'],
-        'use_smart_format': cfg['c_smart'],
-        'use_format_integral': cfg['c_int'],
-        'use_format_vector': cfg['c_vec'],
-        'use_format_colon': cfg['c_colon'],
+        'use_format_integral': cfg['c_int'], 'use_format_vector': cfg['c_vec'], 'use_format_colon': cfg['c_colon'],
         'use_add_comment': False, 'image_layout_mode': 'ignore'
     }
     new_text = process_formatting(txt, **params)
     push_history(new_text)
     st.toast("⚡ Đã làm đẹp!")
 
+# [MỚI] Callback riêng cho nút Ansbook
+def cb_run_main_struct():
+    txt = st.session_state.editor_content
+    if not txt.strip(): 
+        st.toast("⚠️ Trống!")
+        return
+    
+    # Chỉ chạy hàm wrap cấu trúc
+    new_text = wrap_exam_structure(txt)
+    
+    if new_text == txt:
+        st.toast("⚠️ Không tìm thấy cấu trúc câu hỏi (ex)!")
+    else:
+        push_history(new_text)
+        st.toast("✅ Đã đóng gói Main (Ansbook)!", icon="📦")
+
+# ... (Các hàm còn lại: cb_action_image, cb_add_tag, cb_copy_all, cb_save_gui_answers GIỮ NGUYÊN) ...
 def cb_action_image(mode):
     txt = st.session_state.editor_content
     if not txt: return
@@ -230,3 +224,43 @@ def cb_save_gui_answers():
         new_text = inject_answer_keys(st.session_state.editor_content, final)
         push_history(new_text)
         st.toast("💾 Đã lưu!")
+
+def cb_load_sample():
+    # Kiểm tra nếu Editor đang có nội dung (không phải rỗng)
+    if st.session_state.editor_content and st.session_state.editor_content.strip():
+        st.toast("⛔ Editor đang có dữ liệu! Vui lòng xóa trắng trước khi nạp mẫu.", icon="⚠️")
+        return
+    sample_text = r"""PHẦN I. (3.0 điểm) Trắc nghiệm nhiều phương án. Thí sinh làm từ câu 1 đến câu 12. Mỗi câu thí sinh chỉ chọn một phương án.
+Câu 1: Chuẩn bị cho cuộc thi nhảy hiện đại. Bạn Ri tập nhảy trong 18 ngày và bạn ấy thống kê lại ở bảng sau:
+
+\begin{tabular}{|l|l|l|l|l|l|}
+\hline Thời gian (phút) & {$[20 ; 25)$} & {$[25 ; 30)$} & {$[30 ; 35)$} & {$[35 ; 40)$} & {$[40 ; 45)$} \\
+\hline Số ngày & 6 & 6 & 4 & 1 & 1 \\
+\hline
+\end{tabular}
+
+Phương sai của mẫu số liệu ghép nhóm có giá trị gần nhất với giá trị nào dưới đây?
+A. 33,25 .
+B. 31,25 .
+C. 25,21 .
+D. 32,25 .
+
+
+PHẦN II. (4.0 điểm) Thí sinh trả lời câu 1 đến câu 4. Trong mỗi ý a), b), c), d) ở mỗi câu, thí sinh chọn đúng hoặc sai.
+Câu 1: Một trang sách có dạng hình chữ nhật $A B C D$ với diện tích là $384\left(\mathrm{~cm}^{2}\right)$. Sau khi để lề trên và lề dưới đều là 3 cm ; để lề trái và lề phải đều là 2 cm . Phần còn lại của trang sách là hình chữ nhật $E F I H$ được in chữ. (hình vẽ bên dưới).
+![](https://cdn.mathpix.com/cropped/7d86bf36-49b4-424e-bb41-d04dac05b5dc-03.jpg?height=369&width=607&top_left_y=392&top_left_x=817)
+
+Gọi $A B=x(\mathrm{~cm})$ và $A D=y(\mathrm{~cm})$ lần lượt là chiều rộng và chiều dài của trang sách $(x, y>0)$
+a) Biểu thức liên hệ giữa $x$ và $y$ là $x y=384$.
+b) Chiều rộng $E F$, chiều dài $I H$ của trang sách được in chữ lần lượt là $x-2$ và $y-3$.
+c) Phần in chữ trên trang sách có diện tích lớn nhất bằng $216\left(\mathrm{~cm}^{2}\right)$.
+d) Diện tích $S$ của hình chữ nhật $E F I H$ của phần in chữ được tính bởi công thức $S=(x-2)(y-3)$.
+
+
+PHẦN III. (3.0 điểm) Thí sinh trả lời từ câu 1 đến câu 4.
+Câu 1: Khối lượng $q(\mathrm{~kg})$ của một mặt hàng mà cửa tiệm bán được trong một ngày phụ thuộc vào giá bán $p$ (nghìn đồng/kg) theo công thức $p=15-\frac{1}{2} q$. Doanh thu từ việc bán mặt hàng trên của cửa tiệm được tính theo công thức $R=p . q$. Tìm giá bán mỗi kilôgam sản phẩm để đạt được doanh thu cao nhất?
+"""
+    # Nếu editor đang trống hoặc người dùng muốn ghi đè, ta nạp vào
+    # Để an toàn, ta luôn push vào history để họ có thể Undo
+    push_history(sample_text)
+    st.toast("📄 Đã nạp code mẫu!", icon="✅")
