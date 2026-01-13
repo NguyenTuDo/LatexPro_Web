@@ -69,8 +69,12 @@ setup_resources()
 st.markdown("""
 <style>
 /* ... (Giữ nguyên các CSS layout) ... */
-[data-testid="stHeader"] { background: transparent; pointer-events: none; z-index: 10000; }
-[data-testid="stHeader"] button { pointer-events: auto; color: #005fb8 !important; }
+[data-testid="stHeader"] {
+    background: transparent;
+}
+[data-testid="stHeader"] > div:first-child {
+    display: none;
+}
 [data-testid="stDecoration"] { display: none; }
 section[data-testid="stSidebar"] { z-index: 10001 !important; box-shadow: 5px 0 15px rgba(0,0,0,0.1); background-color: white; }
 [data-testid="stSidebar"] + section, [data-testid="stSidebar"] + div { margin-left: 0 !important; width: 100% !important; }
