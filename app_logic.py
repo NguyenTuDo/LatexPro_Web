@@ -63,16 +63,21 @@ def get_theme_css():
     
     return f"""
     <style>
+        /* 1. Ẩn Header mặc định (chứa biểu tượng GitHub, Fork) */
+        header {{ visibility: hidden; }}
+        
+        /* 2. Ẩn Footer mặc định (dòng chữ Made with Streamlit) */
+        footer {{ visibility: hidden; }}
+        
+        /* 3. Ẩn Menu chính (nút ba chấm ở góc phải) */
+        #MainMenu {{ visibility: hidden; }}
+        
+        /* 4. Đảm bảo nội dung không bị đẩy xuống quá sâu sau khi ẩn Header */
+        .stApp {{ margin-top: -55px; }}
+
+        /* ... (Các phần CSS cũ của bạn) ... */
         .stApp {{ background-color: {t['bg_app']}; color: {t['text_main']}; }}
-        .block-container {{ padding: 1rem 1.5rem !important; }}
-        div[data-testid="stVerticalBlock"] {{ gap: 0.5rem !important; }}
-        .stTextArea textarea {{ font-family: 'Consolas', 'JetBrains Mono', monospace !important; font-size: 15px !important; line-height: 1.6 !important; font-weight: 500 !important; color: {t['text_editor']} !important; background-color: {t['bg_editor']} !important; border: 1px solid {t['border_editor']} !important; border-radius: 6px !important; padding: 12px !important; }}
-        .stTextArea textarea:focus {{ border-color: #007fd4 !important; box-shadow: 0 0 0 1px #007fd4 !important; }}
-        div[data-testid="column"]:nth-of-type(2) {{ background-color: {t['bg_panel']}; padding: 15px; border-radius: 8px; border: 1px solid {t['border_panel']}; }}
-        .tool-header {{ color: {t['header']}; margin-top: 15px; margin-bottom: 8px; border-bottom: 1px solid {t['border_panel']}; }}
-        button[data-baseweb="tab"] {{ background-color: transparent !important; }}
-        div[data-baseweb="tab-highlight"] {{ background-color: #007fd4 !important; }}
-        {custom_btn_css}
+        /* ... tiếp tục các dòng CSS khác ... */
     </style>
     """
 
