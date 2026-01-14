@@ -606,111 +606,156 @@ render_toast()
 
 # [File: app.py] - Thay thế toàn bộ đoạn CSS style cũ
 
-# CSS TỐI ƯU GIAO DIỆN & FORCE LIGHT MODE
+# CSS TỐI ƯU GIAO DIỆN & HARD-CODE THEME (KHÔNG CẦN CONFIG.TOML)
 st.markdown("""
 <style>
-/* 0. ÉP BUỘC LIGHT MODE CHO TOÀN BỘ WEB */
+/* ====================================================================
+   1. ÉP MÀU XANH (HARD-CODE THEME) - KHẮC PHỤC LỖI MÀU ĐỎ TRÊN CLOUD
+   ==================================================================== */
+   
+/* Đổi màu chính của biến môi trường (Hỗ trợ một số thành phần) */
 :root {
-    color-scheme: light !important; /* Báo cho trình duyệt biết chỉ dùng theme sáng */
-}
-[data-testid="stAppViewContainer"] {
-    background-color: #ffffff !important;
-}
-[data-testid="stSidebar"] {
-    background-color: #ffffff !important;
+    --primary-color: #005fb8 !important;
+    --background-color: #ffffff !important;
+    --secondary-background-color: #f0f2f6 !important;
+    --text-color: #262730 !important;
+    --font: "Source Sans Pro", sans-serif !important;
 }
 
-/* 1. FIX LỖI KHÔNG CUỘN HẾT TRANG */
-.stApp { margin: 0; padding: 0; }
+/* Nút Primary (Màu xanh) */
+button[kind="primary"] {
+    background-color: #005fb8 !important;
+    border-color: #005fb8 !important; 
+    color: white !important;
+}
+button[kind="primary"]:hover {
+    background-color: #004a94 !important;
+    border-color: #004a94 !important;
+}
+button[kind="primary"]:focus {
+    box-shadow: 0 0 0 0.2rem rgba(0, 95, 184, 0.5) !important;
+}
 
+/* Checkbox & Radio Button khi được chọn */
+div[data-testid="stCheckbox"] label span[data-checked="true"] > div:first-child,
+div[data-testid="stRadio"] label span[data-checked="true"] > div:first-child {
+    background-color: #005fb8 !important;
+    border-color: #005fb8 !important;
+}
+
+/* Toggle (Nút gạt) */
+label[data-testid="stWidgetLabel"] + div[data-testid="stCheckbox"] span[data-checked="true"] {
+    background-color: #005fb8 !important;
+}
+
+/* Thanh trượt (Slider) */
+div[data-testid="stSlider"] div[data-testid="stTickBar"] {
+    background-color: #005fb8 !important;
+}
+div[data-testid="stSlider"] div[role="slider"] {
+    background-color: #005fb8 !important;
+    box-shadow: 0 0 0 0.2rem rgba(0, 95, 184, 0.2) !important;
+}
+
+/* Link text */
+a {
+    color: #005fb8 !important;
+}
+
+/* Ẩn thanh trang trí 7 màu mặc định của Streamlit (thường có màu đỏ) */
+div[data-testid="stDecoration"] {
+    background-image: linear-gradient(90deg, #005fb8, #0099ff) !important;
+    height: 3px !important;
+}
+
+/* ====================================================================
+   2. THU GỌN GIAO DIỆN (COMPACT MODE) - KHẮC PHỤC LỖI "TO QUÁ KHỔ"
+   ==================================================================== */
+
+/* Thu nhỏ Font chữ toàn bộ hệ thống */
+html, body, [class*="css"] {
+    font-size: 14px !important; /* Giảm từ 16px xuống 14px */
+}
+
+/* Co gọn khoảng cách lề (Padding) của trang chính */
 .block-container { 
-    padding-top: 1rem !important; 
+    padding-top: 1.5rem !important; /* Đẩy nội dung lên sát hơn */
     padding-left: 2rem !important; 
     padding-right: 2rem !important;
-    padding-bottom: 150px !important; 
+    padding-bottom: 50px !important;
+    max-width: 100% !important;
 }
 
-/* 2. ẨN CÁC THÀNH PHẦN THỪA */
-[data-testid="stHeader"] { background: transparent; }
-[data-testid="stHeader"] > div:first-child { display: none; }
-[data-testid="stDecoration"] { display: none; }
-[data-testid="stFooter"] { display: none; }
-
-/* 3. TINH CHỈNH SIDEBAR */
-section[data-testid="stSidebar"] { 
-    z-index: 10001 !important; 
-    box-shadow: 5px 0 15px rgba(0,0,0,0.1); 
-    background-color: white !important; /* Force trắng */
+/* Ẩn Header mặc định của Streamlit Cloud (Dòng "Manage app" gây tốn diện tích) */
+header[data-testid="stHeader"] {
+    display: none !important;
 }
-[data-testid="stSidebar"] + section, [data-testid="stSidebar"] + div { 
-    margin-left: 0 !important; width: 100% !important; 
+/* Đẩy nội dung lên bù vào chỗ Header vừa ẩn */
+div[data-testid="stAppViewContainer"] > section:first-child {
+    padding-top: 0px !important;
 }
 
-/* 4. TINH CHỈNH WIDGETS */
-.stButton, .stCheckbox, .stRadio, .stSelectbox, .stToggle { margin-bottom: 2px !important; margin-top: 0 !important; }
-.stButton button { font-weight: 500 !important; } 
-.stExpander { margin-bottom: 2px !important; margin-top: 0 !important; }
-.stDivider { margin: 2px 0 !important; }
+/* Thu hẹp Sidebar */
+section[data-testid="stSidebar"] {
+    width: 260px !important; /* Mặc định là 336px -> Thu nhỏ lại */
+    padding-top: 1rem !important;
+}
+section[data-testid="stSidebar"] > div {
+    padding-top: 1rem !important;
+}
 
-/* 5. EDITOR TEXTAREA STYLE */
+/* Giảm khoảng cách giữa các Widget */
+.stButton, .stCheckbox, .stRadio, .stSelectbox, .stToggle, .stTextInput, .stTextArea { 
+    margin-bottom: 0px !important; 
+    margin-top: 0px !important; 
+}
+div[data-testid="stVerticalBlock"] > div {
+    gap: 0.5rem !important; /* Giảm gap từ 1rem xuống 0.5rem */
+}
+
+/* Tinh chỉnh Font chữ cho Code Editor (Text Area) */
 .stTextArea textarea { 
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important; 
-    font-size: 16px !important;      
-    font-weight: 600 !important;     
-    color: #003366 !important;       
-    line-height: 1.5 !important;     
-    padding: 12px !important;        
-    background-color: #fcfcfc !important; /* Nền trắng xám nhẹ */
+    font-family: 'Consolas', 'Monaco', monospace !important; 
+    font-size: 13.5px !important; /* Chữ trong ô code nhỏ lại cho dễ nhìn nhiều */
+    line-height: 1.45 !important;
+    padding: 10px !important;
+    background-color: #fcfcfc !important; 
+    border: 1px solid #e0e0e0 !important;
 }
 
-/* 6. XÓA PADDING THỪA */
-.stContainer { padding: 0 !important; }
-[data-testid="stVerticalBlock"] > div { padding: 0 !important; margin: 0 !important; }
-
-/* 7. TOP BAR STYLE (CỐ ĐỊNH) */
-#top-bar { 
-    position: fixed; top: 0px; left: 0px; width: 100%; 
-    background: white !important; /* Force trắng */
-    z-index: 999; 
-    padding: 5px 40px; 
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08); 
-    border-bottom: 1px solid #e5e7eb; 
-    height: 60px; 
-    display: flex; align-items: center; 
-}
-[data-testid="stAppViewContainer"] { padding-top: 60px !important; }
-[data-testid="column"] { flex: auto !important; width: auto !important; }
-
-/* 8. STYLE NÚT ĐẶC BIỆT */
+/* ====================================================================
+   3. STYLE RIÊNG CỦA APP (NÚT GRADIENT, ICONS...)
+   ==================================================================== */
 .custom-ansbook-btn {
     background: linear-gradient(90deg, #FF9800 0%, #F44336 100%) !important;
     color: white !important; border: none !important;
-    font-weight: 900 !important; font-size: 15px !important;
-    text-transform: uppercase; letter-spacing: 0.5px;
-    box-shadow: 0 4px 15px rgba(244, 67, 54, 0.4) !important;
-    transition: all 0.3s ease !important; margin-top: 5px !important;
+    font-weight: 700 !important; font-size: 14px !important;
+    box-shadow: 0 3px 10px rgba(244, 67, 54, 0.4) !important;
 }
 .custom-ansbook-btn:hover {
-    transform: translateY(-2px) scale(1.02) !important;
-    box-shadow: 0 6px 20px rgba(244, 67, 54, 0.6) !important;
-    background: linear-gradient(90deg, #FFB74D 0%, #E57373 100%) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 5px 15px rgba(244, 67, 54, 0.6) !important;
 }
 
 .custom-auto-convert-btn {
     background: linear-gradient(90deg, #005fb8 0%, #0099ff 100%) !important;
     color: white !important; border: none !important;
-    font-weight: 900 !important; font-size: 14px !important;
-    text-transform: uppercase; letter-spacing: 0.5px;
-    box-shadow: 0 4px 12px rgba(0, 95, 184, 0.4) !important;
-    transition: all 0.3s ease !important;
+    font-weight: 700 !important; font-size: 14px !important;
+    box-shadow: 0 3px 10px rgba(0, 95, 184, 0.4) !important;
 }
 .custom-auto-convert-btn:hover {
-    transform: translateY(-2px) scale(1.02) !important;
-    box-shadow: 0 6px 18px rgba(0, 95, 184, 0.6) !important;
-    background: linear-gradient(90deg, #0069d9 0%, #33adff 100%) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 5px 15px rgba(0, 95, 184, 0.6) !important;
 }
 
-/* (ĐÃ XÓA PHẦN DARK MODE SUPPORT Ở ĐÂY) */
+/* Footer ẩn */
+footer { display: none !important; }
+
+/* Dark mode overrides (nếu người dùng bật chế độ tối máy tính) */
+@media (prefers-color-scheme: dark) {
+    section[data-testid="stSidebar"] { background-color: #262730 !important; }
+    .stTextArea textarea { background-color: #1e1e1e !important; color: #d4d4d4 !important; border-color: #333 !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
