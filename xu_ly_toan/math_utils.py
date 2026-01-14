@@ -24,17 +24,60 @@ def fix_decimal_comma_only(text):
 
 def clean_whitespace(text):
     if not text: return ""
+
+    # 0. CHUẨN HÓA KHOẢNG TRẮNG ẨN (Quan trọng khi copy từ PDF/Web)
+    # Thay thế non-breaking space (\xa0) bằng space thường
+    text = text.replace(u'\xa0', u' ')
+
+    # 1. DỌN DẸP CƠ BẢN
+    text = re.sub(r'[ \t]+', ' ', text)
+    # Fix lỗi kinh điển
     text = re.sub(r'\bO\s+x\s+y\s+z\b', 'Oxyz', text)
     text = re.sub(r'\bO\s+x\s+y\b', 'Oxy', text)
-    text = re.sub(r'[ \t]+', ' ', text)
+
+    # 2. XỬ LÝ KHOẢNG TRẮNG TRƯỚC DẤU CÂU (Fix lỗi " ;" và " .")
+    # Áp dụng cho: , ; : . ! ? ) ] }
+    text = re.sub(r'\s+([,;:\.\!\?\)\]\}])', r'\1', text)
+    
+    # 3. XỬ LÝ KHOẢNG TRẮNG SAU DẤU MỞ (Fix lỗi "( 3")
+    text = re.sub(r'([\(\[\{])\s+', r'\1', text)
+
+    # 4. [MỚI] GOM SỐ TRONG MATH VÀ ĐƠN VỊ NGOÀI TEXT
+    # Khắc phục lỗi: "$3$ cm" -> "$3$cm" (để sau này Smart Clean xử lý tiếp)
+    # Hoặc "$3$ cm ;" -> "$3$cm;"
+    units = r"(?:cm|m|km|dm|mm|kg|g|s|Hz|N|A|V|W|J|mol|l|ml)"
+    # Tìm: ($số$) + khoảng trắng + (đơn vị)
+    text = re.sub(r'(\$[\d,.]+\$)\s+(' + units + r'\b)', r'\1\2', text)
+
+    # 5. XỬ LÝ BÊN TRONG MATH MODE ($...$)
+    def fix_math_internal(match):
+        content = match.group(1)
+        
+        # 5.1 Xóa dấu ~ (non-breaking space) thừa trong \mathrm{~cm}
+        content = content.replace(r'\mathrm{~', r'\mathrm{')
+        content = content.replace(r'~', ' ') # Đổi ~ thành cách thường để regex dưới xử lý
+        
+        # 5.2 Gom biến rời: "x y" -> "xy" (trừ lệnh latex)
+        content = re.sub(r'(?<!\\)\b([a-zA-Z])\s+([a-zA-Z])\b', r'\1\2', content)
+        
+        # 5.3 Gom số và biến: "2 x" -> "2x"
+        content = re.sub(r'(\d)\s+([a-zA-Z])\b', r'\1\2', content)
+        
+        # 5.4 Dọn dẹp khoảng trắng thừa đầu cuối
+        content = content.strip()
+        
+        return f"${content}$"
+
+    text = re.sub(r'\$([^\$\n]+)\$', fix_math_internal, text)
+
+    # 6. DỌN DÒNG TRỐNG (Giữ tối đa 1 dòng trống)
     lines = [line.strip() for line in text.split('\n')]
     cleaned_lines = []
     for line in lines:
         if line: cleaned_lines.append(line)
-        else:
-            if cleaned_lines and cleaned_lines[-1] != "": cleaned_lines.append("")
-    text = '\n'.join(cleaned_lines)
-    return text.strip()
+        elif cleaned_lines and cleaned_lines[-1] != "": cleaned_lines.append("")
+            
+    return '\n'.join(cleaned_lines).strip()
 
 def fix_spacing_semantics(text):
     if not text: return ""
@@ -60,14 +103,32 @@ def fix_spacing_semantics(text):
 
 def fix_latex_syntax_and_symbols(text):
     if not text: return ""
+
+    # 1. [MỚI] Sửa ký hiệu song song: // hoặc /| -> \parallel
+    # Regex xử lý:
+    # (?<!:) : Không phải là url (http://)
+    # \s* : Khoảng trắng thừa
+    # /      : Dấu gạch chéo đầu
+    # \s* : Khoảng trắng giữa (nếu có)
+    # (?:/|\|) : Dấu gạch chéo thứ 2 HOẶC dấu gạch đứng (|)
+    # Ví dụ: M N / / (S A B) -> M N \parallel (S A B)
+    text = re.sub(r'(?<!:)\s*/\s*(?:/|\|)\s*', r' \\parallel ', text)
+
+    # 2. Các xử lý cú pháp cũ (Giữ nguyên)
     text = re.sub(r'\^\{\\prime\}', "'", text)
     text = re.sub(r'\^\\prime', "'", text)
     text = re.sub(r'\\backslash', r'\\setminus', text)
+    
+    # Chuẩn hóa xác suất P( -> \mathrm{P}(
     text = re.sub(r'(?<!\\mathrm\{)\bP\s*\(', r'\\mathrm{P}(', text)
+    
+    # Chuẩn hóa tổ hợp/chỉnh hợp A_n^k, P_n
     pattern_AC = r'(?<!\\mathrm\{)\b([AC])\s*(_\s*(?:\{[^{}]*\}|[\w]))\s*(\^\s*(?:\{[^{}]*\}|[\w]))'
     text = re.sub(pattern_AC, r'\\mathrm{\1}\2\3', text)
+    
     pattern_P = r'(?<!\\mathrm\{)\bP\s*(_\s*(?:\{[^{}]*\}|[\w]))'
     text = re.sub(pattern_P, r'\\mathrm{P}\1', text)
+    
     return text
 
 def center_tabular_elements(text):
@@ -193,23 +254,86 @@ def replace_dot_multiplication(text):
 
 def smart_cleanup(text):
     if not text: return ""
+
+    # Danh sách đơn vị đo lường phổ biến
+    # Lưu ý: kg phải đứng trước g, mm đứng trước m để regex khớp dài nhất trước
+    units = r"km|m|cm|dm|mm|kg|g|s|Hz|N|A|V|W|J|mol|\\Omega|l|ml"
+    
+    # Prefix: bắt các lệnh rác như space, ~, \mathrm{...}
+    prefix = r"(?:~|\s+|\\mathrm\{[~\s]*|\\text\{[~\s]*|\\mathmrm\{[~\s]*)?"
+
+    # =========================================================
+    # 1. XỬ LÝ ĐƠN VỊ CÓ NGOẶC: (cm), \left(cm\right)
+    # Điều kiện: BẮT BUỘC PHẢI CÓ DẤU NGOẶC
+    # Hỗ trợ: $x(cm)$, $216(cm^2)$
+    # =========================================================
+    
+    # [FIX] Đã xóa dấu ? ở cuối cụm ngoặc để bắt buộc phải có ngoặc
+    paren_pattern = (
+        r'(?<=[=\{\s\(\[\$])([a-zA-Z0-9.,]+)'   # 1. Giá trị (x, 216...)
+        + r'\s*((?:\\left)?\()'                 # 2. Ngoặc mở (BẮT BUỘC)
+        + r'\s*' + prefix                       # Prefix
+        + r'(' + units + r')'                   # 3. Đơn vị
+        + r'\}?'                                #    Đóng }
+        + r'(\^\{?[\d]+\}?)?'                   # 4. Số mũ
+        + r'\s*((?:\\right)?\))'                # 5. Ngoặc đóng (BẮT BUỘC)
+        + r'\s*\$'                              # 6. Kết thúc $
+    )
+    
+    def replace_paren_unit(match):
+        val = match.group(1)
+        # Chuẩn hóa về ngoặc đơn thường ( )
+        unit = match.group(3)
+        exp = match.group(4)
+        
+        # Bọc mũ vào $...$
+        if exp: unit_part = f"{unit}${exp}$"
+        else: unit_part = unit
+            
+        return f"{val}$\\,({unit_part})"
+
+    text = re.sub(paren_pattern, replace_paren_unit, text)
+
+
+    # =========================================================
+    # 2. XỬ LÝ ĐƠN VỊ SỐ (KHÔNG NGOẶC): 50kg, 500 m^2
+    # Điều kiện: Giá trị BẮT BUỘC LÀ SỐ (\d)
+    # =========================================================
+    
+    numeric_pattern = (
+        r'(\d+(?:[.,]\d+)?)'           # 1. Số (BẮT BUỘC LÀ SỐ)
+        + r'\s*' + prefix              # Prefix
+        + r'(' + units + r')'          # 2. Đơn vị
+        + r'(?:\})?'                   #    Đóng } (của prefix)
+        + r'(\^\{?-?[\d]+\}?)?'        # 3. Số mũ
+        + r'\s*\$'                     # 4. Kết thúc $
+    )
+    
+    def replace_numeric_unit(match):
+        val = match.group(1)
+        unit = match.group(2)
+        exp = match.group(3)
+        
+        if exp:
+            # Input: $500 m^2$ -> Output: $500$\,m$^2$
+            return f"{val}$\\,{unit}${exp}$"
+        else:
+            # Input: $50kg$ -> Output: $50$\,kg
+            return f"{val}$\\,{unit}"
+    
+    text = re.sub(numeric_pattern, replace_numeric_unit, text)
+
+
+    # =========================================================
+    # 3. CÁC XỬ LÝ KHÁC (GIỮ NGUYÊN)
+    # =========================================================
+    
     text = re.sub(r'([A-Z])\s*\\cdot\s*([A-Z]{2,})', r'\1.\2', text)
     text = re.sub(r'\(\$([^\$\n]+)\$\)', r'$(\1)$', text)
-    def insert_sep(match):
-        num = match.group(0)
-        if len(num) < 4: return num
-        res = ""
-        for i, digit in enumerate(reversed(num)):
-            if i > 0 and i % 3 == 0: res = "\\," + res
-            res = digit + res
-        return res
-    parts = re.split(r'(\$.*?\$)', text, flags=re.DOTALL)
-    for i in range(len(parts)):
-        if parts[i].startswith('$') and parts[i].endswith('$'):
-            parts[i] = re.sub(r'\d{4,}', insert_sep, parts[i])
-    text = "".join(parts)
+    
     def process_comma(match):
         content = match.group(1).strip()
+        if re.match(r'^[\d,]+$', content): return match.group(0)
         new_content = ""
         depth = 0; last_idx = 0
         for idx, char in enumerate(content):
@@ -222,7 +346,9 @@ def smart_cleanup(text):
                 last_idx = idx + 1
         new_content += content[last_idx:]
         return f"${new_content}$"
+        
     text = re.sub(r'\$([^\$\n]+)\$', process_comma, text)
+    
     return text
 
 def convert_systems(text):
@@ -236,20 +362,46 @@ def convert_systems(text):
     text = re.sub(r'\\begin\{cases\}(.*?)\\end\{cases\}', lambda m: f"\\heva{{{format_inner(m.group(1))}}}", text, flags=re.DOTALL)
     return text
 
+# [File: xu_ly_toan/math_utils.py]
+
 def add_question_comments(text):
     if not text: return ""
+    
+    # 1. Xóa sạch các comment %Câu cũ (nếu có) để tránh trùng lặp
+    text = re.sub(r'(?m)^%Câu\s*\d+.*$\n?', '', text)
+    
     parts = re.split(r'(\\begin\{ex\}.*?\\end\{ex\})', text, flags=re.DOTALL)
     processed = []
     counter = 1
+    
+    # Regex tìm label cứng đầu câu (Ví dụ: "Câu 1.", "Bài 5:", "Câu $1$:")
+    # Tìm sau \begin{ex}[...] là các từ khóa Câu/Bài
+    header_pattern = r'(\\begin\{ex\}(?:\[.*?\])?\s*)(?:Câu|Bài)\s*[\d\$]+[:.]?\s*'
+    
     for part in parts:
         if part.strip().startswith(r'\begin{ex}'):
-            q_type = "TN"
-            if r'\choiceTF' in part: q_type = "DS"
-            elif r'\shortans' in part: q_type = "TLN"
-            processed.append(f"%Câu {counter} ({q_type})\n{part}")
+            # 2. XÓA LABEL CŨ TRONG NỘI DUNG
+            # Input: \begin{ex} Câu 1. Giải pt...
+            # Output: \begin{ex} Giải pt...
+            part = re.sub(header_pattern, r'\1', part, count=1)
+            
+            # 3. NHẬN DIỆN LOẠI CÂU (Để ghi chú cho rõ)
+            q_type = "TN" # Mặc định Trắc nghiệm
+            if r'\choiceTF' in part: q_type = "DS" # Đúng Sai
+            elif r'\shortans' in part: q_type = "TLN" # Trả lời ngắn
+            
+            # 4. THÊM COMMENT ĐÁNH SỐ MỚI
+            # %Câu 1 (TN)
+            processed.append(f"%Câu {counter}\n{part}")
             counter += 1
-        else: processed.append(part)
+        else:
+            processed.append(part)
+            
     return "".join(processed)
+
+# [QUAN TRỌNG]
+# Đảm bảo hàm process_formatting gọi add_question_comments ở gần cuối
+# (Code của bạn đã có sẵn đoạn này rồi, chỉ cần thay nội dung hàm trên là xong)
 
 def add_math_delimiters_and_fix_numbers(text):
     if not text: return ""
@@ -313,7 +465,6 @@ def process_formatting(text,
     if use_add_comment: text = add_question_comments(text)
     
     text = center_tabular_elements(text)
-    
     # [MỚI] Chạy cấu trúc Main ở bước cuối cùng
     if use_main_struct:
         text = wrap_exam_structure(text)

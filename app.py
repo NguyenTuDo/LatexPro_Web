@@ -5,6 +5,268 @@ import app_logic as logic
 from cau_hinh.noi_dung_chu import NOI_DUNG_HUONG_DAN, THONG_TIN_UNG_DUNG
 from xu_ly_toan.math_utils import get_question_types, get_existing_answers
 
+# [Thêm import re ở đầu file nếu chưa có]
+import re
+
+# [File: app.py]
+
+# [File: app.py]
+
+from xu_ly_toan.tu_luan import convert_tu_luan # Đảm bảo đã import hàm xử lý
+
+@st.dialog("📝 SOẠN THẢO & CHUẨN HÓA TỰ LUẬN", width="large")
+def show_essay_process_dialog():
+    st.markdown("""
+    <style>
+        div[data-testid="stDialog"] div[role="dialog"] { width: 95vw !important; max-width: 1800px !important; }
+        textarea { font-family: 'Consolas', monospace !important; font-size: 14px !important; }
+        /* Tinh chỉnh nút chèn nằm gọn gàng */
+        .insert-btn button { height: 2.5rem; margin-top: 0px !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # st.info("💡 **Quy trình:** Dán đề thô (Mathpix/Word) ➝ Nhấn 'Chuyển đổi' ➝ Sửa lại bên phải ➝ Nhấn 'Chèn'.")
+
+    # 1. BỐ CỤC LẠI: Cột Input nhỏ (1) - Nút (0.1) - Cột Output lớn (2)
+    c_in, c_btn, c_out = st.columns([1, 0.15, 2])
+
+    # --- CỘT TRÁI: INPUT ---
+    with c_in:
+        st.markdown("**1. Dán đề thô:**")
+        st.text_area("Input Raw", height=600, label_visibility="collapsed", 
+                     placeholder="Dán nội dung bài tự luận vào đây...",
+                     key="essay_raw_input")
+
+    # --- CỘT GIỮA: NÚT CHUYỂN ---
+    with c_btn:
+        st.write("")
+        st.write("") 
+        st.write("")
+        st.write("")
+        st.write("") # Căn chỉnh cho nút nằm giữa theo chiều dọc
+        if st.button("➡️", help="Chuyển đổi sang LaTeX chuẩn", type="primary", use_container_width=True):
+            raw_text = st.session_state.get("essay_raw_input", "")
+            if raw_text and raw_text.strip():
+                processed = convert_tu_luan(raw_text)
+                st.session_state.essay_final_edit = processed 
+                st.session_state.essay_processed_output = processed
+                st.toast("Đã chuyển đổi xong!", icon="✅")
+            else:
+                st.toast("Vui lòng nhập nội dung!", icon="⚠️")
+
+    # --- CỘT PHẢI: OUTPUT & ACTION ---
+    with c_out:
+        # Tạo hàng tiêu đề chứa Nút Chèn luôn (để ở trên)
+        c_head, c_action = st.columns([1, 0.4])
+        
+        with c_head:
+            st.markdown("**2. Kết quả (Latex):**")
+            
+        with c_action:
+            # Nút chèn nằm ngay trên góc phải
+            st.markdown('<div class="insert-btn">', unsafe_allow_html=True)
+            if st.button("✅ CHÈN VÀO CUỐI ĐỀ", type="primary", use_container_width=True):
+                # Lấy giá trị hiện tại trong ô soạn thảo (qua key session)
+                final_content = st.session_state.get("essay_final_edit", "")
+                
+                if final_content and final_content.strip():
+                    current_main = st.session_state.editor_content
+                    separator = "\n\n% =====================================================================\n% PHẦN TỰ LUẬN (Được thêm tự động)\n% =====================================================================\n"
+                    new_content = current_main + separator + final_content
+                    
+                    logic.push_history(new_content)
+                    st.toast("Đã thêm vào cuối đề thành công!", icon="🎉")
+                    st.rerun()
+                else:
+                    st.warning("Nội dung kết quả đang trống.")
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        # Ô Soạn thảo kết quả (Nằm dưới nút chèn)
+        val_out = st.session_state.get("essay_processed_output", "")
+        st.text_area("Output Latex", value=val_out, height=565, 
+                     label_visibility="collapsed", key="essay_final_edit")
+
+@st.dialog("📝 NHẬP ĐÁP ÁN CHI TIẾT")
+def show_answer_input_dialog():
+    # CSS Tối ưu giao diện
+    st.markdown("""
+    <style>
+        div[data-testid="stDialog"] div[role="dialog"] { width: 85vw !important; max-width: 1400px !important; }
+        div[role="radiogroup"] { gap: 10px !important; }
+        .stRadio label, .stCheckbox label { font-size: 14px !important; }
+        div[data-testid="stRadio"], div[data-testid="stCheckbox"], div[data-testid="stTextInput"] {
+            margin-top: -5px !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+    text = st.session_state.editor_content
+    existing_ans = logic.get_existing_answers(text)
+    q_types = logic.get_question_types(text)
+    
+    if not q_types:
+        st.warning("⚠️ Không tìm thấy câu hỏi nào!")
+        return
+
+    # --- SETUP DỮ LIỆU ---
+    mc_questions = [q for q, t in q_types.items() if t == 'MC']
+    tf_questions = [q for q, t in q_types.items() if t == 'TF']
+    sa_questions = [q for q, t in q_types.items() if t == 'SA']
+
+    # --- HEADER & OPTIONS ---
+    c_info, c_opt = st.columns([2, 1])
+    with c_info:
+        st.info("💡 **Quy tắc:** Trắc nghiệm chọn 1 • Đúng/Sai chọn ý Đúng • Trả lời ngắn: Tối đa 4 ký tự.")
+    with c_opt:
+        numbering_mode = st.radio(
+            "Chế độ hiển thị số thứ tự:",
+            ["Liên tục (Câu 1 ➝ Hết)", "Làm mới theo phần (1, 2... lại từ đầu)"],
+            index=1,
+            horizontal=False,
+            label_visibility="collapsed"
+        )
+    
+    is_reset_mode = (numbering_mode == "Làm mới theo phần (1, 2... lại từ đầu)")
+
+    # --- [CẢI TIẾN] NHẬP NHANH CHỈ NHẬN A,B,C,D ---
+    if mc_questions:
+        def apply_quick_mc():
+            # 1. Lấy giá trị thô & Chuyển chữ hoa ngay lập tức
+            raw_val = st.session_state.get("quick_mc_input", "").upper()
+            
+            # 2. LỌC NGHIÊM NGẶT: Chỉ giữ lại A, B, C, D
+            # Ví dụ nhập: "1a 2b sai c" -> Sẽ thành "ABC"
+            clean_val = "".join([c for c in raw_val if c in ['A', 'B', 'C', 'D']])
+            
+            # 3. Cập nhật ngược lại vào ô input (để người dùng thấy ký tự rác biến mất)
+            if raw_val != clean_val:
+                st.session_state.quick_mc_input = clean_val
+            
+            if not clean_val: return
+
+            # 4. Kiểm tra độ dài
+            count_mc = len(mc_questions)
+            if len(clean_val) > count_mc:
+                st.toast(f"⚠️ Dư {len(clean_val) - count_mc} đáp án. Đã tự động cắt bớt.", icon="✂️")
+            
+            # 5. Điền vào Radio Buttons
+            for i, q_num in enumerate(mc_questions):
+                if i < len(clean_val):
+                    st.session_state[f"ans_q_{q_num}"] = clean_val[i]
+
+        st.markdown("##### ⚡ Nhập nhanh Trắc nghiệm")
+        st.text_input(
+            "Quick Input",
+            key="quick_mc_input",
+            on_change=apply_quick_mc,
+            placeholder="Chỉ nhận ký tự A, B, C, D (Ví dụ: ABCD...)",
+            label_visibility="collapsed"
+        )
+        # Hướng dẫn nhỏ
+        st.caption(f"Đã khóa bộ lọc: Chỉ cho phép nhập **A, B, C, D**. Các ký tự khác (số, dấu chấm...) sẽ tự động bị xóa.")
+        st.write("") 
+
+    # --- BẮT ĐẦU FORM ---
+    with st.form("answer_form", border=False):
+        
+        # Helper: Render Inline
+        def render_row_inline(q_num, idx, type_label, content_renderer):
+            display_num = idx + 1 if is_reset_mode else q_num
+            c_lab, c_input = st.columns([0.8, 3.5]) 
+            with c_lab:
+                st.markdown(f"<div style='padding-top: 0px; font-weight:bold;'>Câu {display_num}</div>", unsafe_allow_html=True)
+            with c_input:
+                content_renderer(q_num)
+
+        # Helper: Grid System
+        def render_grid(questions_list, render_func):
+            cols_per_row = 3
+            for i in range(0, len(questions_list), cols_per_row):
+                cols = st.columns(cols_per_row)
+                for j in range(cols_per_row):
+                    if i + j < len(questions_list):
+                        q_num = questions_list[i+j]
+                        idx = i + j
+                        with cols[j]:
+                            render_func(q_num, idx)
+                            st.write("")
+
+        # 1. TRẮC NGHIỆM (MC)
+        if mc_questions:
+            if not mc_questions: st.markdown("##### 🔵 Phần Trắc nghiệm")
+            
+            def content_mc(q_num):
+                default_val = existing_ans.get(q_num, [])
+                val_in_session = st.session_state.get(f"ans_q_{q_num}")
+                opts = ['A', 'B', 'C', 'D']
+                
+                if val_in_session and val_in_session in opts:
+                    sel_idx = opts.index(val_in_session)
+                elif default_val and default_val[0] in opts:
+                    sel_idx = opts.index(default_val[0])
+                else:
+                    sel_idx = None
+
+                st.radio(f"mc_{q_num}", options=opts, index=sel_idx, horizontal=True, label_visibility="collapsed", key=f"ans_q_{q_num}")
+
+            render_grid(mc_questions, lambda q, idx: render_row_inline(q, idx, "MC", content_mc))
+            st.markdown("---")
+
+        # 2. ĐÚNG SAI (TF)
+        if tf_questions:
+            st.markdown("##### 🟠 Phần Đúng/Sai")
+            def content_tf(q_num):
+                current_val = existing_ans.get(q_num, [])
+                c1, c2, c3, c4 = st.columns(4) 
+                for k, opt in enumerate(['A', 'B', 'C', 'D']):
+                    with [c1, c2, c3, c4][k]:
+                        st.checkbox(opt, value=(opt in current_val), key=f"ds_{q_num}_{opt}")
+            render_grid(tf_questions, lambda q, idx: render_row_inline(q, idx, "TF", content_tf))
+            st.markdown("---")
+
+        # 3. TRẢ LỜI NGẮN (SA)
+        if sa_questions:
+            st.markdown("##### 🟣 Phần Trả lời ngắn")
+            def content_sa(q_num):
+                val_str = existing_ans.get(q_num, [])
+                val_str = val_str[0] if val_str else ""
+                user_input = st.text_input(f"sa_{q_num}", value=val_str, max_chars=4, placeholder="-1,5", label_visibility="collapsed", key=f"ans_q_{q_num}")
+                if user_input:
+                    clean_input = user_input.replace('.', ',')
+                    if not re.match(r'^[-0-9,]+$', clean_input):
+                        st.caption(f"❌ :red[Sai]")
+            render_grid(sa_questions, lambda q, idx: render_row_inline(q, idx, "SA", content_sa))
+
+        # NÚT SUBMIT
+        submitted = st.form_submit_button("💾 LƯU ĐÁP ÁN & CẬP NHẬT CODE", type="primary", use_container_width=True)
+        
+        if submitted:
+            new_answers = {}
+            has_error = False
+            
+            # Thu thập dữ liệu
+            for q in mc_questions:
+                val = st.session_state.get(f"ans_q_{q}")
+                if val: new_answers[q] = [val]
+            
+            for q in tf_questions:
+                vals = [opt for opt in ['A', 'B', 'C', 'D'] if st.session_state.get(f"ds_{q}_{opt}")]
+                new_answers[q] = vals
+            
+            for q in sa_questions:
+                val = st.session_state.get(f"ans_q_{q}", "")
+                if val:
+                    final_val = val.replace('.', ',')
+                    if not re.match(r'^[-0-9,]+$', final_val):
+                        st.toast(f"❌ Câu {q}: Sai định dạng!", icon="🛑")
+                        has_error = True
+                    else:
+                        new_answers[q] = [final_val]
+
+            if not has_error:
+                updated_text = logic.inject_answer_keys(text, new_answers)
+                logic.push_history(updated_text)
+                st.rerun()
 # [File: app.py] - Thay thế đoạn code cũ ở phần đầu file
 @st.dialog("ℹ️ QUY TRÌNH CHUẨN HÓA EXTEST")
 def show_extest_info():
@@ -56,28 +318,56 @@ logic.init_session_state()
 st.markdown(logic.get_theme_css(), unsafe_allow_html=True)
 
 # JS & CSS INJECTION
+# JS & CSS INJECTION
 def setup_resources():
-    # [CẬP NHẬT] Sửa logic tìm nút Cài đặt để phù hợp với icon mới
+    # [CẬP NHẬT] Thêm logic bắt phím tắt Ctrl+Z (Undo) và Ctrl+Y (Redo)
     js_code = """
     <script>
+    // 1. Logic ẩn hiện Sidebar
     const toggleSidebar = () => {
         const sidebarBtn = window.parent.document.querySelector('[data-testid="stSidebarCollapsedControl"] button');
         if (sidebarBtn) { sidebarBtn.click(); } 
         else { const closeBtn = window.parent.document.querySelector('section[data-testid="stSidebar"] button'); if (closeBtn) closeBtn.click(); }
     };
 
+    // 2. Logic tìm nút và tô màu (MutationObserver)
     const observer = new MutationObserver(() => {
         const buttons = window.parent.document.querySelectorAll('button');
         buttons.forEach(btn => {
-            // [SỬA] Chỉ cần tìm icon bánh răng
             if (btn.innerText.includes("⚙️")) { btn.onclick = toggleSidebar; }
-            // [SỬA Ở ĐÂY] Cập nhật tên mới để JS nhận diện được nút màu Cam
             if (btn.innerText.includes("ĐÓNG GÓI MAIN")) btn.classList.add("custom-ansbook-btn");
-            // Logic cho nút màu Xanh (Lưu ý: Nếu bạn đổi tên nút EXTEST kia thì cũng phải sửa dòng này tương tự)
-            if (btn.innerText.includes("CHUẨN HÓA EXTEST")) btn.classList.add("custom-auto-convert-btn");
+            if (btn.innerText.includes("CHUẨN HÓA EXTEST") || btn.innerText.includes("CHUẨN HÓA TỰ LUẬN")) btn.classList.add("custom-auto-convert-btn");
         });
     });
     observer.observe(window.parent.document.body, { childList: true, subtree: true });
+
+    // 3. [MỚI] Logic bắt sự kiện phím tắt (Hotkeys)
+    const doc = window.parent.document;
+    doc.addEventListener('keydown', function(e) {
+        // Kiểm tra phím Ctrl (Windows) hoặc Command (Mac)
+        if (e.ctrlKey || e.metaKey) {
+            
+            // --- UNDO: Ctrl + Z (Không giữ Shift) ---
+            if (e.key.toLowerCase() === 'z' && !e.shiftKey) {
+                // Tìm nút có chữ "Undo" trong sidebar
+                const btnUndo = Array.from(doc.querySelectorAll('button')).find(b => b.innerText.includes("Undo"));
+                if (btnUndo && !btnUndo.disabled) {
+                    e.preventDefault(); // Chặn undo mặc định của trình duyệt để tránh xung đột
+                    btnUndo.click();
+                }
+            }
+            
+            // --- REDO: Ctrl + Y  HOẶC  Ctrl + Shift + Z ---
+            else if (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey)) {
+                // Tìm nút có chữ "Redo" trong sidebar
+                const btnRedo = Array.from(doc.querySelectorAll('button')).find(b => b.innerText.includes("Redo"));
+                if (btnRedo && !btnRedo.disabled) {
+                    e.preventDefault();
+                    btnRedo.click();
+                }
+            }
+        }
+    });
     </script>
     """
     components.html(js_code, height=0)
@@ -137,48 +427,75 @@ render_toast()
 # CSS TỐI ƯU GIAO DIỆN
 st.markdown("""
 <style>
-/* ... (Giữ nguyên CSS cũ) ... */
-[data-testid="stHeader"] { background: transparent; }
-[data-testid="stHeader"] > div:first-child { display: none; }
-[data-testid="stDecoration"] { display: none; }
-section[data-testid="stSidebar"] { z-index: 10001 !important; box-shadow: 5px 0 15px rgba(0,0,0,0.1); background-color: white; }
-[data-testid="stSidebar"] + section, [data-testid="stSidebar"] + div { margin-left: 0 !important; width: 100% !important; }
-.stApp { margin: 0; padding: 0; overflow-y: auto !important; }
-.block-container { padding-top: 1rem !important; padding-bottom: 0rem !important; padding-left: 2rem !important; padding-right: 2rem !important; }
+/* 1. FIX LỖI KHÔNG CUỘN HẾT TRANG */
+.stApp { 
+    margin: 0; 
+    padding: 0; 
+    /* Bỏ overflow-y: auto cứng nhắc để trình duyệt tự xử lý cuộn mượt hơn */
+}
 
-/* Tinh chỉnh nút bấm cho gọn */
+.block-container { 
+    padding-top: 1rem !important; 
+    padding-left: 2rem !important; 
+    padding-right: 2rem !important;
+    /* [QUAN TRỌNG] Tăng khoảng trống dưới cùng lên 150px để không bị cảm giác "cụt" */
+    padding-bottom: 150px !important; 
+}
+
+/* 2. ẨN CÁC THÀNH PHẦN THỪA CỦA STREAMLIT */
+[data-testid="stHeader"] { background: transparent; }
+[data-testid="stHeader"] > div:first-child { display: none; } /* Ẩn decoration bar màu cầu vồng */
+[data-testid="stDecoration"] { display: none; }
+[data-testid="stFooter"] { display: none; } /* Ẩn footer "Made with Streamlit" */
+
+/* 3. TINH CHỈNH SIDEBAR */
+section[data-testid="stSidebar"] { 
+    z-index: 10001 !important; 
+    box-shadow: 5px 0 15px rgba(0,0,0,0.1); 
+    background-color: white; 
+}
+/* Đẩy nội dung chính sang phải khi Sidebar mở (tránh đè) */
+[data-testid="stSidebar"] + section, [data-testid="stSidebar"] + div { 
+    margin-left: 0 !important; 
+    width: 100% !important; 
+}
+
+/* 4. TINH CHỈNH WIDGETS */
 .stButton, .stCheckbox, .stRadio, .stSelectbox, .stToggle { margin-bottom: 2px !important; margin-top: 0 !important; }
 .stButton button { font-weight: 500 !important; } 
-
 .stExpander { margin-bottom: 2px !important; margin-top: 0 !important; }
 .stDivider { margin: 2px 0 !important; }
-/* Tìm dòng cũ bắt đầu bằng .stTextArea textarea và thay bằng đoạn này */
+
+/* 5. EDITOR TEXTAREA STYLE */
 .stTextArea textarea { 
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important; /* Font chuẩn code/TeXstudio */
-    font-size: 16px !important;      /* Chữ to hơn (cũ là 13px) */
-    font-weight: 600 !important;     /* Chữ đậm hơn */
-    color: #003366 !important;       /* Màu Xanh Đậm (Navy Blue) */
-    line-height: 1.5 !important;     /* Dãn dòng cho dễ nhìn */
-    padding: 12px !important;        /* Khoảng cách lề */
-    background-color: #fcfcfc !important; /* Nền trắng xám nhẹ cho dịu mắt */
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important; 
+    font-size: 16px !important;      
+    font-weight: 600 !important;     
+    color: #003366 !important;       
+    line-height: 1.5 !important;     
+    padding: 12px !important;        
+    background-color: #fcfcfc !important; 
 }
+
+/* 6. XÓA PADDING THỪA GIỮA CÁC KHỐI */
 .stContainer { padding: 0 !important; }
 [data-testid="stVerticalBlock"] > div { padding: 0 !important; margin: 0 !important; }
 
-/* [CẬP NHẬT] Top Bar Style - Flex Align Center */
+/* 7. TOP BAR STYLE (CỐ ĐỊNH) */
 #top-bar { 
     position: fixed; top: 0px; left: 0px; width: 100%; 
     background: white; z-index: 999; 
-    padding: 5px 40px; /* Padding trái phải */
+    padding: 5px 40px; 
     box-shadow: 0 1px 3px rgba(0,0,0,0.08); 
     border-bottom: 1px solid #e5e7eb; 
-    height: 60px; /* Tăng nhẹ chiều cao */
+    height: 60px; 
     display: flex; align-items: center; 
 }
+/* Đẩy nội dung xuống dưới Top Bar */
 [data-testid="stAppViewContainer"] { padding-top: 60px !important; }
 [data-testid="column"] { flex: auto !important; width: auto !important; }
 
-/* STYLE NÚT ĐẶC BIỆT */
+/* 8. STYLE NÚT ĐẶC BIỆT (GRADIENT) */
 .custom-ansbook-btn {
     background: linear-gradient(90deg, #FF9800 0%, #F44336 100%) !important;
     color: white !important; border: none !important;
@@ -207,21 +524,11 @@ section[data-testid="stSidebar"] { z-index: 10001 !important; box-shadow: 5px 0 
     background: linear-gradient(90deg, #0069d9 0%, #33adff 100%) !important;
 }
 
-/* Style Author Card & Dark Mode (Giữ nguyên) */
-.author-card { background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border-radius: 12px; padding: 25px; display: flex; align-items: center; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-bottom: 20px; border: 1px solid #dee2e6; }
-.author-avatar { width: 120px; height: 120px; border-radius: 50%; border: 4px solid white; box-shadow: 0 4px 8px rgba(0,0,0,0.15); margin-right: 25px; }
-.author-info h2 { margin: 0 0 8px 0 !important; color: #005fb8; font-size: 24px !important; }
-.author-info p { margin: 4px 0 !important; color: #555; font-size: 15px; }
-.social-btn { display: inline-block; margin-top: 12px; padding: 8px 18px; background-color: #1877f2; color: white !important; text-decoration: none; border-radius: 20px; font-weight: bold; font-size: 14px; transition: background 0.2s; box-shadow: 0 2px 5px rgba(24, 119, 242, 0.3); }
-.social-btn:hover { background-color: #166fe5; transform: translateY(-1px); }
+/* 9. DARK MODE SUPPORT */
 @media (prefers-color-scheme: dark) {
     section[data-testid="stSidebar"] { background-color: #252526; }
     #top-bar { background-color: #1e1e1e; border-bottom: 1px solid #333; }
     [data-testid="stHeader"] button { color: #d4d4d4 !important; }
-    .author-card { background: linear-gradient(135deg, #2d2d2d 0%, #1e1e1e 100%); border-color: #444; }
-    .author-info h2 { color: #66b3ff; }
-    .author-info p { color: #ccc; }
-    .author-avatar { border-color: #444; }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -308,9 +615,9 @@ with tab_main:
                     help="Tự động phân nhóm I, II, III và thêm code xuất đáp án.")
         
 
-        t1, t2, t3, t4 = st.tabs(["✨ LÀM ĐẸP", "🖼️ ẢNH & TAG", "🔑 ĐÁP ÁN", "📊 THỐNG KÊ"])
-        
+        t1, t_essay, t2, t3 = st.tabs(["✨ LÀM ĐẸP", "📝 TỰ LUẬN", "🖼️ ẢNH & TAG", "🔑 ĐÁP ÁN"])
         with t1:
+            st.caption("Công cụ làm đẹp code LaTeX theo các tùy chọn bên dưới (có thể dán code đã có vào để sửa)")
             btn_run, btn_sel, btn_clr = st.columns([2.4, 0.4, 0.4])
             with btn_run: st.button("⚡ CHẠY LÀM ĐẸP", use_container_width=True, on_click=cb_run_beauty_with_feedback, help="Chạy làm đẹp theo các tùy chọn bên dưới")
             with btn_sel: st.button("✅", use_container_width=True, on_click=cb_select_all_beauty, help="Chọn hết")
@@ -325,15 +632,35 @@ with tab_main:
                 st.checkbox("Xóa khoảng trống", key="c_space", help="O x y ➝ Oxy, ( A ; B ) ➝ (A;B), (A B C) ➝ (ABC)")
                 st.checkbox("Format Số & Toán ($)", key="c_num_math", help="1.5 ➝ 1{,}5 | 2,5 ➝ $2{,}5$")
             
-            with st.expander("**2️⃣ Nâng cao & Cấu trúc:**", expanded=True):
-                col_comb_1, col_comb_2 = st.columns(2)
-                with col_comb_1:
+            st.markdown("**2️⃣ Nâng cao & Cấu trúc:**")
+            col_comb_1, col_comb_2 = st.columns(2)
+            with col_comb_1:
                     st.checkbox("frac ➝ dfrac", key="c_frac", help="\\frac{1}{2} ➝ \\dfrac{1}{2}")
                     st.checkbox("Tex ➝ \\heva/\\hoac", key="c_sys", help="Gộp các môi trường cases/array về lệnh tắt \\heva, \\hoac.")
                     st.checkbox("Displaystyle", key="c_int", help="• Thêm \\displaystyle\n• Thêm \\limits\n• dx ➝ \\mathrm{\\,d}x")
-                with col_comb_2:
+            with col_comb_2:
                     st.checkbox("Vectơ chuẩn", key="c_vec", help="• \\vec{u} ➝ \\overrightarrow{u}")
                     st.checkbox("Colon (:)", key="c_colon", help="Đổi dấu : trong hình học thành \\colon")
+
+        # [File: app.py] - Tìm đoạn "with t_essay:"
+
+        with t_essay:
+            st.caption("Công cụ tách biệt để xử lý phần Tự Luận, tránh ảnh hưởng đến code đã có.")
+    
+    # Thay vì nút xử lý trực tiếp, giờ là nút mở Popup
+            st.button("🛠️ MỞ CÔNG CỤ SOẠN TỰ LUẬN (POPUP)", 
+              type="primary", 
+              use_container_width=True, 
+              on_click=show_essay_process_dialog, # Gọi hàm popup vừa tạo
+              help="Mở cửa sổ nhập liệu riêng để xử lý Bài 1, Bài 2...")
+    
+            st.info("""
+    **Cách dùng:**
+    1.  Nhấn nút trên để mở cửa sổ soạn thảo.
+    2.  Copy phần tự luận thô (từ Mathpix/Word) dán vào.
+    3.  Phần mềm sẽ chuẩn hóa thành code `ex`, `enumerate`.
+    4.  Kiểm tra xong nhấn **"Chèn vào cuối đề"** để ghép vào bài làm chính.
+    """)
 
         with t2:
             st.caption("Đánh số câu tự động (trước \\begin\{ex}):")
@@ -344,65 +671,73 @@ with tab_main:
             st.selectbox("Chọn chế độ:", ["Center", "immini", "Phải [thm]", "imminiL"], key="img_sel", label_visibility="collapsed")
             st.button("🖼️ Áp dụng chế độ Ảnh trên", use_container_width=True, on_click=lambda: logic.cb_action_image(st.session_state.img_sel))
 
-        with t3:
-            q_types = get_question_types(st.session_state.editor_content)
-            if q_types:
-                existing = get_existing_answers(st.session_state.editor_content)
-                with st.form("ans_form"):
-                    st.form_submit_button("💾 LƯU ĐÁP ÁN VÀO EDITOR", type="primary", 
-                                          on_click=logic.cb_save_gui_answers, 
-                                          use_container_width=True)
-                    st.divider()
-                    
-                    with st.container(height=550):
-                        for q, t in q_types.items():
-                            old = existing.get(q, [])
-                            st.markdown(f"**C.{q}** `({t})`")
-                            
-                            if t == 'MC':
-                                idx = "ABCD".find(old[0]) if (old and old[0] in "ABCD") else None
-                                st.radio(f"MC_{q}", ["A","B","C","D"], index=idx if idx != -1 else None, 
-                                         key=f"ans_{q}_MC", horizontal=True, label_visibility="collapsed")
-                            elif t == 'TF':
-                                c = st.columns(4)
-                                for i, ch in enumerate("ABCD"):
-                                    c[i].checkbox(ch, ch in old, key=f"ans_{q}_TF_{ch}")
-                            elif t == 'SA':
-                                chars = list(old[0] if old else "") + [""] * 4
-                                c = st.columns(4)
-                                for i in range(4):
-                                    c[i].text_input(f"S{i}", chars[i], max_chars=1, 
-                                                    key=f"ans_{q}_SA_{i}", label_visibility="collapsed")
-                            st.divider()
-            else:
-                st.warning("Hãy bấm 'TỰ ĐỘNG CHUẨN HÓA' hoặc nạp đề để hiện danh sách câu hỏi.")
+        # [CẬP NHẬT] TAB THỐNG KÊ - TÍCH HỢP NÚT NHẬP LIỆU
+# [File: app.py] - Thay thế nội dung bên trong "with t3:"
 
-        with t4:
-            stats = logic.calculate_stats(st.session_state.editor_content)
-            def fmt_stat(done, total):
-                if total == 0: return f'<span style="color:#999">0/0</span>'
-                color = "#28a745" if done == total else "#d9534f"
-                return f'<b style="color:{color}; font-size:1.1em">{done}/{total}</b>'
+# [File: app.py] - Thay thế nội dung bên trong "with t3:"
 
-            html_content = f"""
-            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #e9ecef; color: #333;">
-                <div style="font-size: 16px; margin-bottom: 10px; border-bottom: 1px solid #ddd; padding-bottom: 5px;">
-                    <b>TỔNG SỐ CÂU HỎI:</b> <span style="font-size:18px; font-weight:bold">{stats['Total']}</span>
-                </div>
-                <div style="display:flex; justify-content:space-between; margin: 8px 0; align-items:center;">
-                    <span>Trắc nghiệm (MC):</span> {fmt_stat(stats['MC_Done'], stats['MC_Total'])}
-                </div>
-                <div style="display:flex; justify-content:space-between; margin: 8px 0; align-items:center;">
-                    <span>Đúng/Sai (TF):</span> {fmt_stat(stats['TF_Done'], stats['TF_Total'])}
-                </div>
-                <div style="display:flex; justify-content:space-between; margin: 8px 0; align-items:center;">
-                    <span>Điền khuyết (SA):</span> {fmt_stat(stats['SA_Done'], stats['SA_Total'])}
-                </div>
+with t3:
+    st.caption("Thống kê số lượng câu hỏi và kiểm tra đáp án.")
+    
+    if not st.session_state.editor_content:
+        st.info("Chưa có nội dung để thống kê.")
+    else:
+        # 1. LẤY DỮ LIỆU CHUẨN
+        stats = logic.get_question_types(st.session_state.editor_content)
+        total = len(stats)
+        
+        # [FIX] Đếm đúng mã định danh (MC, TF, SA)
+        # Nếu dùng code cũ count('TN') sẽ ra 0 vì math_utils trả về 'MC'
+        count_mc = list(stats.values()).count('MC')
+        count_tf = list(stats.values()).count('TF')
+        count_sa = list(stats.values()).count('SA')
+        
+        # 2. HIỂN THỊ THẺ THỐNG KÊ (Thiết kế mới)
+        c_total, c_detail = st.columns([1, 3])
+        
+        with c_total:
+            # Box TỔNG CÂU (Màu đỏ nổi bật)
+            st.markdown(f"""
+            <div style="
+                background-color: #fff1f0; 
+                border: 1px solid #ffa39e; 
+                border-radius: 8px; 
+                padding: 15px 10px; 
+                text-align: center;
+                height: 100%;">
+                <div style="font-size: 13px; color: #d63031; font-weight: 700; text-transform: uppercase; margin-bottom: 5px;">TỔNG CÂU</div>
+                <div style="font-size: 38px; font-weight: 800; color: #c0392b; line-height: 1;">{total}</div>
             </div>
-            """
-            st.markdown(html_content, unsafe_allow_html=True)
-            st.button("🔄 Cập nhật thống kê", use_container_width=True)
+            """, unsafe_allow_html=True)
+            
+        with c_detail:
+            # 3 thẻ con nằm ngang
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.markdown(f"""<div style="text-align:center; padding:10px; background:#e6f7ff; border-radius:8px; border:1px solid #91caff"><div style="color:#0050b3; font-weight:bold; font-size:24px">{count_mc}</div><div style="color:#003a8c; font-size:11px; font-weight:600">TRẮC NGHIỆM</div></div>""", unsafe_allow_html=True)
+            with c2:
+                st.markdown(f"""<div style="text-align:center; padding:10px; background:#f6ffed; border-radius:8px; border:1px solid #b7eb8f"><div style="color:#389e0d; font-weight:bold; font-size:24px">{count_tf}</div><div style="color:#237804; font-size:11px; font-weight:600">ĐÚNG SAI</div></div>""", unsafe_allow_html=True)
+            with c3:
+                st.markdown(f"""<div style="text-align:center; padding:10px; background:#f9f0ff; border-radius:8px; border:1px solid #d3adf7"><div style="color:#722ed1; font-weight:bold; font-size:24px">{count_sa}</div><div style="color:#531dab; font-size:11px; font-weight:600">TRẢ LỜI NGẮN</div></div>""", unsafe_allow_html=True)
 
+        st.divider()
+        
+        # 3. KIỂM TRA ĐÁP ÁN (Gọn gàng)
+        existing_ans = logic.get_existing_answers(st.session_state.editor_content)
+        missing_count = sum(1 for q in stats if q not in existing_ans or not existing_ans[q])
+        
+        if missing_count > 0:
+            # [YÊU CẦU] Chỉ báo số lượng, không liệt kê 1,2,3...
+            st.warning(f"Còn **{missing_count}** câu chưa nhập đáp án.", icon="⚠️")
+            st.markdown("<div style='font-size:14px; color:#666; margin-bottom:10px'><i>Vui lòng nhập đầy đủ để xuất file chính xác nhất.</i></div>", unsafe_allow_html=True)
+        else:
+            st.success("✅ Tuyệt vời! Tất cả câu hỏi đã có đáp án.", icon="🎉")
+            
+        # Nút mở Popup to, rõ
+        if st.button("📝 NHẬP/SỬA ĐÁP ÁN (POPUP)", type="primary", use_container_width=True):
+            show_answer_input_dialog()
+            
+        st.caption("💡 Mẹo: Nhấn nút trên để mở bảng nhập nhanh. Dữ liệu sẽ tự động điền vào các lệnh `\\choice`, `\\True`, `\\shortans`.")
 with tab_info:
     st.header(f"🚀 {THONG_TIN_UNG_DUNG['Tên phần mềm']}")
     st.caption(f"Phiên bản: {THONG_TIN_UNG_DUNG['Phiên bản']}")

@@ -13,6 +13,7 @@ from xu_ly_toan.math_utils import (process_formatting, inject_answer_keys, parse
 from xu_ly_toan.trac_nghiem import convert_trac_nghiem
 from xu_ly_toan.dung_sai import convert_dung_sai
 from xu_ly_toan.tra_loi_ngan import convert_tra_loi_ngan
+from xu_ly_toan.tu_luan import convert_tu_luan
 
 # --- CẤU HÌNH MẶC ĐỊNH ---
 LOGIC_KEYS = ['c_url', 'c_space', 'c_dec', 'c_dol', 'c_frac', 'c_sys', 'c_delim', 'c_dot', 'c_smart', 
@@ -272,3 +273,34 @@ Câu 1: Khối lượng $q(\mathrm{~kg})$ của một mặt hàng mà cửa ti�
 """
     push_history(sample_text)
     show_popup("✅ Đã nạp đề mẫu thành công!")
+
+
+def cb_convert_essay():
+    raw = st.session_state.editor_content
+    if not raw.strip(): st.toast("⚠️ Nội dung trống!"); return
+    
+    with st.spinner("Đang chuẩn hóa Tự Luận..."):
+        # 1. Dọn dẹp header thừa
+        raw = remove_exam_headers(raw)
+        
+        # 2. Chuyển đổi cấu trúc Tự luận (Bài -> Câu, a/b/c -> enumerate)
+        new_text = convert_tu_luan(raw)
+        
+        # 3. [MỚI] TÍCH HỢP LÀM ĐẸP (Nếu Toggle đang bật)
+        if st.session_state.get("auto_beautify_after_convert", False):
+             # Lấy cấu hình từ session_state
+             cfg = {k: st.session_state[k] for k in LOGIC_KEYS}
+             params = {
+                'use_smart_format': cfg['c_smart'], 'use_clean_url': cfg['c_url'], 'use_clean_space': cfg['c_space'],
+                'use_fix_decimal': cfg['c_dec'], 'use_add_dollar': cfg['c_dol'],
+                'use_frac_dfrac': cfg['c_frac'], 'use_convert_system': cfg['c_sys'],
+                'use_remove_delimiter': cfg['c_delim'], 'use_dot_multiplication': cfg['c_dot'],
+                'use_format_integral': cfg['c_int'], 'use_format_vector': cfg['c_vec'], 'use_format_colon': cfg['c_colon'],
+                'use_add_comment': False, 'image_layout_mode': 'ignore'
+            }
+             # Chạy làm đẹp trên nội dung đã có cấu trúc
+             new_text = process_formatting(new_text, **params)
+
+        push_history(new_text)
+        
+    st.toast("📝 Đã chuyển Tự Luận & Làm đẹp!", icon="✅")
