@@ -138,64 +138,155 @@ def center_tabular_elements(text):
         return f"\\begin{{center}}\n{match.group('core')}\n\\end{{center}}"
     return re.sub(pattern, replacer, text, flags=re.DOTALL)
 
-# [CẬP NHẬT] Hàm bọc cấu trúc Main Ansbook với lệnh riêng cho từng phần
-def wrap_exam_structure(text):
+# [File: xu_ly_toan/math_utils.py]
+
+# [File: xu_ly_toan/math_utils.py]
+
+# [File: xu_ly_toan/math_utils.py]
+
+# 1. CẬP NHẬT HÀM ĐÓNG GÓI CHÍNH (Thêm hỗ trợ template bảng đáp án)
+# [File: xu_ly_toan/math_utils.py]
+
+# 1. HÀM ĐÓNG GÓI CHÍNH (CẬP NHẬT)
+def wrap_exam_structure(text, settings=None):
     if not text: return ""
     
-    # 1. Tách các block câu hỏi
-    pattern = r'(\\begin\{ex\}.*?\\end\{ex\})'
+    # Cấu hình mặc định (Thêm các key path_*)
+    defaults = {
+        "cmd_tn": "\\cautn", "cmd_ds": "\\cauds", "cmd_sa": "\\caukq", "cmd_tl": "\\cautl",
+        "use_ans_file": True, "use_table_ans": True,
+        "table_ans_template": "\\begin{indapan}\n    {ans/ans\\currfilebase}\n\\end{indapan}",
+        "custom_header": "",
+        # [MỚI] Tùy chỉnh đường dẫn file đáp án
+        "path_tn": "ans/ans\\currfilebase-Phan-I",
+        "path_ds": "ans/ans\\currfilebase-Phan-II",
+        "path_sa": "ans/ans\\currfilebase-Phan-III",
+        "path_main": "ans/ansb\\currfilebase"
+    }
+    cfg = {**defaults, **(settings or {})}
+
+    pattern = r'(\\begin\{(?:ex|bt|ex_test)\}.*?\\end\{(?:ex|bt|ex_test)\})'
     blocks = re.findall(pattern, text, flags=re.DOTALL)
+    if not blocks: return text
     
-    if not blocks: return text # Không tìm thấy câu hỏi thì trả về nguyên gốc
-    
-    tn_blocks = [] # Trắc nghiệm
-    tf_blocks = [] # Đúng Sai
-    sa_blocks = [] # Trả lời ngắn
-    
+    tn_blocks, tf_blocks, sa_blocks, tl_blocks = [], [], [], []
     for b in blocks:
-        if r'\choiceTF' in b:
-            tf_blocks.append(b)
-        elif r'\shortans' in b:
-            sa_blocks.append(b)
-        else:
-            tn_blocks.append(b)
-            
-    # Helper wrap từng phần với tham số command (lệnh đầu nhóm)
-    def make_section(content_list, phan_label, comment, command):
+        if r'\choiceTF' in b: tf_blocks.append(b)
+        elif r'\shortans' in b: sa_blocks.append(b)
+        elif r'\choice' in b: tn_blocks.append(b)
+        else: tl_blocks.append(b)
+
+    # Helper function nhận tham số path linh hoạt
+    def make_section(content_list, file_path, comment, command):
         if not content_list: return ""
         content = "\n\n".join(content_list)
-        return (f"{command}\n"
-                f"\\Opensolutionfile{{ans}}[ans/ans\\currfilebase-Phan-{phan_label}]\n"
-                f"%{comment}\n"
-                f"{content}\n"
-                f"\\Closesolutionfile{{ans}}")
+        if cfg["use_ans_file"]:
+            return (f"{command}\n"
+                    f"\\Opensolutionfile{{ans}}[{file_path}]\n"
+                    f"%{comment}\n"
+                    f"{content}\n"
+                    f"\\Closesolutionfile{{ans}}")
+        else:
+            return (f"{command}\n%{comment}\n{content}")
 
     body_parts = []
+    # Truyền đường dẫn từ config vào
+    if tn_blocks: body_parts.append(make_section(tn_blocks, cfg["path_tn"], "PHẦN TRẮC NGHIỆM", cfg["cmd_tn"]))
+    if tf_blocks: body_parts.append(make_section(tf_blocks, cfg["path_ds"], "PHẦN ĐÚNG SAI", cfg["cmd_ds"]))
+    if sa_blocks: body_parts.append(make_section(sa_blocks, cfg["path_sa"], "PHẦN TRẢ LỜI NGẮN", cfg["cmd_sa"]))
     
-    # Phần I: Trắc nghiệm -> Dùng \cautn
-    if tn_blocks:
-        body_parts.append(make_section(tn_blocks, "I", "NHÓM CÂU TRẮC NGHIỆM", "\\cautn"))
-        
-    # Phần II: Đúng Sai -> Dùng \cauds
-    if tf_blocks:
-        body_parts.append(make_section(tf_blocks, "II", "NHÓM CÂU ĐÚNG SAI", "\\cauds"))
-        
-    # Phần III: Trả lời ngắn -> Dùng \caukq
-    if sa_blocks:
-        body_parts.append(make_section(sa_blocks, "III", "NHÓM CÂU TRẢ LỜI NGẮN", "\\caukq"))
+    if tl_blocks:
+        tl_content = "\n\n".join(tl_blocks)
+        body_parts.append(f"{cfg['cmd_tl']}\n%PHẦN TỰ LUẬN\n{tl_content}")
         
     full_content = "\n\n".join(body_parts)
     
-    # Wrap tổng thể
-    final_text = (f"\\Opensolutionfile{{ansbook}}[ans/ansb\\currfilebase]\n"
-                  f"{full_content}\n"
-                  f"\\Closesolutionfile{{ansbook}}\n"
-                  f"\\begin{{indapan}}\n"
-                  f"    {{ans/ans\\currfilebase}}\n"
-                  f"\\end{{indapan}}")
+    header_code = f"{cfg['custom_header']}\n" if cfg['custom_header'] else ""
     
-    return final_text
+    # Xử lý file ansbook tổng
+    start_ansbook = f"\\Opensolutionfile{{ansbook}}[{cfg['path_main']}]\n" if cfg["use_ans_file"] else ""
+    close_ansbook = "\n\\Closesolutionfile{ansbook}" if cfg["use_ans_file"] else ""
+    
+    print_ans_table = ""
+    if cfg["use_ans_file"] and cfg["use_table_ans"]:
+        print_ans_table = "\n" + cfg["table_ans_template"]
 
+    return f"{header_code}{start_ansbook}{full_content}{close_ansbook}{print_ans_table}"
+
+# [File: xu_ly_toan/math_utils.py]
+
+# [GIỮ NGUYÊN HÀM wrap_exam_structure CŨ]
+
+# [THAY THẾ HÀM PREVIEW NÀY]
+def preview_exam_structure(text, settings=None):
+    # 1. Config Mặc định
+    defaults = {
+        "cmd_tn": "\\cautn", "cmd_ds": "\\cauds", "cmd_sa": "\\caukq", "cmd_tl": "\\cautl",
+        "use_ans_file": True, "use_table_ans": True,
+        "table_ans_template": "\\begin{indapan}\n    {ans/ans\\currfilebase}\n\\end{indapan}",
+        "custom_header": "",
+        "path_tn": "ans/ans\\currfilebase-Phan-I",
+        "path_ds": "ans/ans\\currfilebase-Phan-II",
+        "path_sa": "ans/ans\\currfilebase-Phan-III",
+        "path_main": "ans/ansb\\currfilebase"
+    }
+    cfg = {**defaults, **(settings or {})}
+
+    # 2. Phân tích nội dung (Hoặc tạo Demo)
+    if not text or not text.strip():
+        # [CHẾ ĐỘ DEMO] Nếu không có input, giả lập số lượng câu hỏi
+        tn_count, tf_count, sa_count, tl_count = 12, 4, 6, 2
+        is_demo = True
+    else:
+        # [CHẾ ĐỘ THỰC] Đếm từ text người dùng
+        pattern = r'(\\begin\{(?:ex|bt|ex_test)\}.*?\\end\{(?:ex|bt|ex_test)\})'
+        blocks = re.findall(pattern, text, flags=re.DOTALL)
+        
+        tn_count = sum(1 for b in blocks if r'\choice' in b and r'\choiceTF' not in b)
+        tf_count = sum(1 for b in blocks if r'\choiceTF' in b)
+        sa_count = sum(1 for b in blocks if r'\shortans' in b)
+        tl_count = len(blocks) - tn_count - tf_count - sa_count
+        is_demo = False
+
+    # 3. Hàm tạo Section giả lập
+    def make_dummy_section(count, file_path, comment, command):
+        if count == 0: return ""
+        # Nội dung placeholder
+        if is_demo:
+            placeholder = f"\n    % [...DEMO: {count} CÂU HỎI SẼ ĐƯỢC CHÈN VÀO ĐÂY...]\n"
+        else:
+            placeholder = f"\n    % [...NỘI DUNG {count} CÂU HỎI THỰC TẾ ĐƯỢC ẨN ĐỂ PREVIEW GỌN...]\n"
+            
+        if cfg["use_ans_file"]:
+            return (f"{command}\n"
+                    f"\\Opensolutionfile{{ans}}[{file_path}]\n"
+                    f"%{comment}\n"
+                    f"{placeholder}"
+                    f"\\Closesolutionfile{{ans}}")
+        else:
+            return f"{command}\n%{comment}\n{placeholder}"
+
+    body_parts = []
+    # Luôn hiển thị các phần nếu count > 0 (Demo luôn > 0)
+    if tn_count > 0: body_parts.append(make_dummy_section(tn_count, cfg["path_tn"], "PHẦN TRẮC NGHIỆM", cfg["cmd_tn"]))
+    if tf_count > 0: body_parts.append(make_dummy_section(tf_count, cfg["path_ds"], "PHẦN ĐÚNG SAI", cfg["cmd_ds"]))
+    if sa_count > 0: body_parts.append(make_dummy_section(sa_count, cfg["path_sa"], "PHẦN TRẢ LỜI NGẮN", cfg["cmd_sa"]))
+    
+    if tl_count > 0:
+        label = "DEMO: " if is_demo else ""
+        body_parts.append(f"{cfg['cmd_tl']}\n%PHẦN TỰ LUẬN\n\n    % [...{label}{tl_count} CÂU TỰ LUẬN...]\n")
+        
+    full_content = "\n\n".join(body_parts)
+    
+    header_code = f"{cfg['custom_header']}\n" if cfg['custom_header'] else "% [HEADER TÙY CHỈNH...]\n"
+    start_ansbook = f"\\Opensolutionfile{{ansbook}}[{cfg['path_main']}]\n" if cfg["use_ans_file"] else ""
+    close_ansbook = "\n\\Closesolutionfile{ansbook}" if cfg["use_ans_file"] else ""
+    
+    print_ans_table = ""
+    if cfg["use_ans_file"] and cfg["use_table_ans"]:
+        print_ans_table = "\n" + cfg["table_ans_template"]
+
+    return f"{header_code}{start_ansbook}{full_content}{close_ansbook}{print_ans_table}"
 def basic_standardize(text):
     if not text: return ""
     text = clean_mathpix_urls(text)

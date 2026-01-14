@@ -3,16 +3,182 @@ import streamlit as st
 import streamlit.components.v1 as components
 import app_logic as logic
 from cau_hinh.noi_dung_chu import NOI_DUNG_HUONG_DAN, THONG_TIN_UNG_DUNG
-from xu_ly_toan.math_utils import get_question_types, get_existing_answers
+from xu_ly_toan.math_utils import get_question_types, get_existing_answers, wrap_exam_structure, preview_exam_structure
 
 # [Thêm import re ở đầu file nếu chưa có]
 import re
 
-# [File: app.py]
-
-# [File: app.py]
-
 from xu_ly_toan.tu_luan import convert_tu_luan # Đảm bảo đã import hàm xử lý
+
+@st.dialog("⚙️ TÙY CHỈNH ĐÓNG GÓI & XEM TRƯỚC")
+def show_pkg_settings_dialog():
+    st.markdown("""
+    <style>
+        div[data-testid="stDialog"] div[role="dialog"] { width: 95vw !important; max-width: 1400px !important; }
+        .warning-box { background-color: #fff4e5; border: 1px solid #ffcc80; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    st.caption("Điều chỉnh cấu trúc đóng gói. Nhấn **'Cập nhật Preview'** để xem trước kết quả.")
+
+    # 1. Config Mặc định
+    default_cfg = {
+        "cmd_tn": "\\cautn", "cmd_ds": "\\cauds", "cmd_sa": "\\caukq", "cmd_tl": "\\cautl",
+        "use_ans_file": True, "use_table_ans": True,
+        "table_ans_template": "\\begin{indapan}\n    {ans/ans\\currfilebase}\n\\end{indapan}",
+        "custom_header": "",
+        "path_tn": "ans/ans\\currfilebase-Phan-I",
+        "path_ds": "ans/ans\\currfilebase-Phan-II",
+        "path_sa": "ans/ans\\currfilebase-Phan-III",
+        "path_main": "ans/ansb\\currfilebase"
+    }
+    
+    # Init session state
+    if "pkg_config" not in st.session_state: st.session_state.pkg_config = default_cfg.copy()
+    else:
+        for k, v in default_cfg.items():
+            if k not in st.session_state.pkg_config: st.session_state.pkg_config[k] = v
+
+    if "is_confirming_reset" not in st.session_state:
+        st.session_state.is_confirming_reset = False
+
+    saved_cfg = st.session_state.pkg_config
+
+    # --- CALLBACKS AN TOÀN ---
+    def cb_enable_reset():
+        st.session_state.is_confirming_reset = True
+
+    def cb_cancel_reset():
+        st.session_state.is_confirming_reset = False
+
+    def cb_confirm_reset():
+        # 1. Reset Main Config về mặc định
+        st.session_state.pkg_config = default_cfg.copy()
+        
+        # 2. [FIX LỖI MÀN HÌNH TRẮNG]
+        # Thay vì gán đè, ta XÓA các key tạm (tmp_*) khỏi session_state.
+        # Điều này buộc các widget (st.text_input) phải khởi tạo lại từ đầu
+        # và lấy giá trị từ tham số `value` (là default_cfg).
+        for key in list(st.session_state.keys()):
+            if key.startswith("tmp_"):
+                del st.session_state[key]
+        
+        # 3. Tắt trạng thái confirm
+        st.session_state.is_confirming_reset = False
+        st.toast("Đã khôi phục cài đặt gốc!", icon="🔄")
+
+    def cb_save_config():
+        # Lưu giá trị từ các widget (đã được Streamlit update vào session state)
+        st.session_state.pkg_config = {
+            "cmd_tn": st.session_state.get("tmp_cmd_tn", saved_cfg["cmd_tn"]),
+            "cmd_ds": st.session_state.get("tmp_cmd_ds", saved_cfg["cmd_ds"]),
+            "cmd_sa": st.session_state.get("tmp_cmd_sa", saved_cfg["cmd_sa"]),
+            "cmd_tl": st.session_state.get("tmp_cmd_tl", saved_cfg["cmd_tl"]),
+            "custom_header": st.session_state.get("tmp_header", saved_cfg["custom_header"]),
+            "use_ans_file": st.session_state.get("tmp_use_ans", saved_cfg["use_ans_file"]),
+            "use_table_ans": st.session_state.get("tmp_use_table", saved_cfg["use_table_ans"]),
+            "table_ans_template": st.session_state.get("tmp_table_tpl", saved_cfg["table_ans_template"]),
+            "path_main": st.session_state.get("tmp_path_main", saved_cfg["path_main"]),
+            "path_tn": st.session_state.get("tmp_path_tn", saved_cfg["path_tn"]),
+            "path_ds": st.session_state.get("tmp_path_ds", saved_cfg["path_ds"]),
+            "path_sa": st.session_state.get("tmp_path_sa", saved_cfg["path_sa"])
+        }
+        st.toast("Đã lưu cấu hình thành công!", icon="✅")
+
+    # --- GIAO DIỆN ---
+    col_settings, col_preview = st.columns([1, 1.2], gap="large")
+
+    with col_settings:
+        st.markdown("#### 🛠️ Cài đặt")
+        
+        # Các ô nhập liệu (Dùng key tmp_*)
+        st.markdown("**1. Lệnh dẫn (Commands):**")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.text_input("Trắc nghiệm:", value=saved_cfg["cmd_tn"], key="tmp_cmd_tn")
+            st.text_input("Đúng Sai:", value=saved_cfg["cmd_ds"], key="tmp_cmd_ds")
+        with c2:
+            st.text_input("Trả lời ngắn:", value=saved_cfg["cmd_sa"], key="tmp_cmd_sa")
+            st.text_input("Tự luận:", value=saved_cfg["cmd_tl"], key="tmp_cmd_tl")
+            
+        st.markdown("**2. Header (Lời dẫn):**")
+        st.text_area("Chèn code LaTeX vào đầu:", value=saved_cfg["custom_header"], height=80, placeholder="\\section*{ĐỀ KIỂM TRA}...", key="tmp_header")
+
+        st.markdown("**3. Cấu trúc:**")
+        # Checkbox cũng dùng key tạm
+        use_ans = st.checkbox("Tạo file đáp án (Opensolutionfile)", value=saved_cfg["use_ans_file"], key="tmp_use_ans")
+        
+        with st.expander("📂 Tùy chọn nâng cao (Đường dẫn File)", expanded=False):
+            st.text_input("File Tổng (ansbook):", value=saved_cfg["path_main"], key="tmp_path_main")
+            st.text_input("File Trắc nghiệm:", value=saved_cfg["path_tn"], key="tmp_path_tn")
+            st.text_input("File Đúng Sai:", value=saved_cfg["path_ds"], key="tmp_path_ds")
+            st.text_input("File Trả lời ngắn:", value=saved_cfg["path_sa"], key="tmp_path_sa")
+
+        use_table = st.checkbox("Chèn bảng đáp án cuối", value=saved_cfg["use_table_ans"], disabled=not use_ans, key="tmp_use_table")
+        
+        # Logic hiển thị Template bảng đáp án
+        if use_table:
+            st.text_area("Template bảng đáp án:", value=saved_cfg["table_ans_template"], height=80, key="tmp_table_tpl")
+        else:
+            # Vẫn giữ giá trị ẩn trong session
+            if "tmp_table_tpl" not in st.session_state:
+                st.session_state.tmp_table_tpl = saved_cfg["table_ans_template"]
+
+        st.write("")
+        st.divider()
+
+        # --- KHU VỰC NÚT BẤM ---
+        if st.session_state.is_confirming_reset:
+            st.markdown("""
+            <div class="warning-box">
+                <span style="font-size:20px">⚠️</span> <b>Xác nhận khôi phục?</b><br>
+                Mọi cài đặt tùy chỉnh sẽ bị mất và quay về mặc định ban đầu.
+            </div>
+            """, unsafe_allow_html=True)
+            
+            confirm_cols = st.columns([1, 1])
+            with confirm_cols[0]:
+                st.button("✅ ĐỒNG Ý", type="primary", use_container_width=True, on_click=cb_confirm_reset)
+            with confirm_cols[1]:
+                st.button("❌ HỦY BỎ", type="secondary", use_container_width=True, on_click=cb_cancel_reset)
+
+        else:
+            b1, b2 = st.columns([1, 1])
+            with b1:
+                st.button("💾 LƯU CẤU HÌNH", type="primary", use_container_width=True, on_click=cb_save_config)
+            with b2:
+                st.button("↺ KHÔI PHỤC MẶC ĐỊNH", type="secondary", use_container_width=True, on_click=cb_enable_reset)
+
+    with col_preview:
+        cp1, cp2 = st.columns([1.5, 1])
+        with cp1: st.markdown("#### 👁️ Xem trước")
+        with cp2: st.button("🔄 Cập nhật Preview", use_container_width=True, help="Bấm để làm mới khung xem trước")
+
+        # Tạo config tạm từ các giá trị trên màn hình (để preview realtime)
+        temp_config = {
+            "cmd_tn": st.session_state.get("tmp_cmd_tn", saved_cfg["cmd_tn"]),
+            "cmd_ds": st.session_state.get("tmp_cmd_ds", saved_cfg["cmd_ds"]),
+            "cmd_sa": st.session_state.get("tmp_cmd_sa", saved_cfg["cmd_sa"]),
+            "cmd_tl": st.session_state.get("tmp_cmd_tl", saved_cfg["cmd_tl"]),
+            "use_ans_file": st.session_state.get("tmp_use_ans", saved_cfg["use_ans_file"]),
+            "use_table_ans": st.session_state.get("tmp_use_table", saved_cfg["use_table_ans"]),
+            "table_ans_template": st.session_state.get("tmp_table_tpl", saved_cfg["table_ans_template"]),
+            "custom_header": st.session_state.get("tmp_header", saved_cfg["custom_header"]),
+            "path_tn": st.session_state.get("tmp_path_tn", saved_cfg["path_tn"]),
+            "path_ds": st.session_state.get("tmp_path_ds", saved_cfg["path_ds"]),
+            "path_sa": st.session_state.get("tmp_path_sa", saved_cfg["path_sa"]),
+            "path_main": st.session_state.get("tmp_path_main", saved_cfg["path_main"]),
+        }
+        
+        # [CẬP NHẬT] Gọi hàm preview (nó sẽ tự sinh demo nếu text rỗng)
+        current_text = st.session_state.editor_content
+        preview_text = preview_exam_structure(current_text, temp_config)
+        
+        st.code(preview_text, language="latex", line_numbers=True)
+        if not current_text:
+            st.caption("ℹ️ Đây là cấu trúc **DEMO** (vì Editor đang trống).")
+        else:
+            st.caption("ℹ️ Đây là cấu trúc thực tế từ nội dung của bạn.")
 
 @st.dialog("📝 SOẠN THẢO & CHUẨN HÓA TỰ LUẬN", width="large")
 def show_essay_process_dialog():
@@ -376,6 +542,20 @@ def cb_select_all_beauty():
     keys = ["c_smart", "c_url", "c_space", "c_num_math", "c_frac", "c_sys", "c_int", "c_vec", "c_colon"]
     for key in keys: st.session_state[key] = True
 
+# [File: app.py]
+
+# Khởi tạo session state cho cấu hình đóng gói nếu chưa có
+if "pkg_config" not in st.session_state:
+    st.session_state.pkg_config = {
+        "cmd_tn": "\\cautn",
+        "cmd_ds": "\\cauds",
+        "cmd_sa": "\\caukq",
+        "cmd_tl": "\\cautl",
+        "use_ans_file": True,
+        "use_table_ans": True,
+        "custom_header": ""
+    }
+
 def cb_clear_all_beauty():
     keys = ["c_smart", "c_url", "c_space", "c_num_math", "c_frac", "c_sys", "c_int", "c_vec", "c_colon"]
     for key in keys: st.session_state[key] = False
@@ -424,40 +604,46 @@ def render_toast():
 # Gọi hàm này ngay sau khi setup_resources
 render_toast()
 
-# CSS TỐI ƯU GIAO DIỆN
+# [File: app.py] - Thay thế toàn bộ đoạn CSS style cũ
+
+# CSS TỐI ƯU GIAO DIỆN & FORCE LIGHT MODE
 st.markdown("""
 <style>
-/* 1. FIX LỖI KHÔNG CUỘN HẾT TRANG */
-.stApp { 
-    margin: 0; 
-    padding: 0; 
-    /* Bỏ overflow-y: auto cứng nhắc để trình duyệt tự xử lý cuộn mượt hơn */
+/* 0. ÉP BUỘC LIGHT MODE CHO TOÀN BỘ WEB */
+:root {
+    color-scheme: light !important; /* Báo cho trình duyệt biết chỉ dùng theme sáng */
 }
+[data-testid="stAppViewContainer"] {
+    background-color: #ffffff !important;
+}
+[data-testid="stSidebar"] {
+    background-color: #ffffff !important;
+}
+
+/* 1. FIX LỖI KHÔNG CUỘN HẾT TRANG */
+.stApp { margin: 0; padding: 0; }
 
 .block-container { 
     padding-top: 1rem !important; 
     padding-left: 2rem !important; 
     padding-right: 2rem !important;
-    /* [QUAN TRỌNG] Tăng khoảng trống dưới cùng lên 150px để không bị cảm giác "cụt" */
     padding-bottom: 150px !important; 
 }
 
-/* 2. ẨN CÁC THÀNH PHẦN THỪA CỦA STREAMLIT */
+/* 2. ẨN CÁC THÀNH PHẦN THỪA */
 [data-testid="stHeader"] { background: transparent; }
-[data-testid="stHeader"] > div:first-child { display: none; } /* Ẩn decoration bar màu cầu vồng */
+[data-testid="stHeader"] > div:first-child { display: none; }
 [data-testid="stDecoration"] { display: none; }
-[data-testid="stFooter"] { display: none; } /* Ẩn footer "Made with Streamlit" */
+[data-testid="stFooter"] { display: none; }
 
 /* 3. TINH CHỈNH SIDEBAR */
 section[data-testid="stSidebar"] { 
     z-index: 10001 !important; 
     box-shadow: 5px 0 15px rgba(0,0,0,0.1); 
-    background-color: white; 
+    background-color: white !important; /* Force trắng */
 }
-/* Đẩy nội dung chính sang phải khi Sidebar mở (tránh đè) */
 [data-testid="stSidebar"] + section, [data-testid="stSidebar"] + div { 
-    margin-left: 0 !important; 
-    width: 100% !important; 
+    margin-left: 0 !important; width: 100% !important; 
 }
 
 /* 4. TINH CHỈNH WIDGETS */
@@ -474,28 +660,28 @@ section[data-testid="stSidebar"] {
     color: #003366 !important;       
     line-height: 1.5 !important;     
     padding: 12px !important;        
-    background-color: #fcfcfc !important; 
+    background-color: #fcfcfc !important; /* Nền trắng xám nhẹ */
 }
 
-/* 6. XÓA PADDING THỪA GIỮA CÁC KHỐI */
+/* 6. XÓA PADDING THỪA */
 .stContainer { padding: 0 !important; }
 [data-testid="stVerticalBlock"] > div { padding: 0 !important; margin: 0 !important; }
 
 /* 7. TOP BAR STYLE (CỐ ĐỊNH) */
 #top-bar { 
     position: fixed; top: 0px; left: 0px; width: 100%; 
-    background: white; z-index: 999; 
+    background: white !important; /* Force trắng */
+    z-index: 999; 
     padding: 5px 40px; 
     box-shadow: 0 1px 3px rgba(0,0,0,0.08); 
     border-bottom: 1px solid #e5e7eb; 
     height: 60px; 
     display: flex; align-items: center; 
 }
-/* Đẩy nội dung xuống dưới Top Bar */
 [data-testid="stAppViewContainer"] { padding-top: 60px !important; }
 [data-testid="column"] { flex: auto !important; width: auto !important; }
 
-/* 8. STYLE NÚT ĐẶC BIỆT (GRADIENT) */
+/* 8. STYLE NÚT ĐẶC BIỆT */
 .custom-ansbook-btn {
     background: linear-gradient(90deg, #FF9800 0%, #F44336 100%) !important;
     color: white !important; border: none !important;
@@ -524,19 +710,13 @@ section[data-testid="stSidebar"] {
     background: linear-gradient(90deg, #0069d9 0%, #33adff 100%) !important;
 }
 
-/* 9. DARK MODE SUPPORT */
-@media (prefers-color-scheme: dark) {
-    section[data-testid="stSidebar"] { background-color: #252526; }
-    #top-bar { background-color: #1e1e1e; border-bottom: 1px solid #333; }
-    [data-testid="stHeader"] button { color: #d4d4d4 !important; }
-}
+/* (ĐÃ XÓA PHẦN DARK MODE SUPPORT Ở ĐÂY) */
 </style>
 """, unsafe_allow_html=True)
 
 # 2. SIDEBAR
 with st.sidebar:
     st.markdown("**⚙️ CÀI ĐẶT**")
-    st.toggle("🌙 Dark Mode", key="is_dark_mode")
     c_undo, c_redo = st.columns(2)
     with c_undo: st.button("↩️ Undo (Z)", key="hidden_undo", on_click=logic.cb_undo, disabled=st.session_state.history_idx <= 0, use_container_width=True)
     with c_redo: st.button("↪️ Redo (Y)", key="hidden_redo", on_click=logic.cb_redo, disabled=st.session_state.history_idx >= len(st.session_state.history) - 1, use_container_width=True)
@@ -608,11 +788,31 @@ with tab_main:
         with col_toggle:
             st.toggle("🔧 Tự làm đẹp", key="auto_beautify_after_convert")
 
-        # Nút ANSBOOK nằm full chiều rộng bên dưới
-        st.button("📦 ĐÓNG GÓI MAIN (CHUẨN VNMATHS)", 
-                    use_container_width=True, 
-                    on_click=logic.cb_run_main_struct, 
-                    help="Tự động phân nhóm I, II, III và thêm code xuất đáp án.")
+        # [CẬP NHẬT] Khu vực Đóng gói Main với nút Tùy chỉnh
+        col_pkg_main, col_pkg_set = st.columns([1, 0.15])
+        
+        with col_pkg_main:
+            # Hàm callback mới truyền settings vào logic xử lý
+            def run_pkg_with_settings():
+                settings = st.session_state.pkg_config
+                # Gọi logic chuẩn hóa (Bạn cần cập nhật logic.cb_run_main_struct để nhận tham số này)
+                # Hoặc viết trực tiếp logic ở đây:
+                current_text = st.session_state.editor_content
+                if current_text:
+                    # Gọi hàm từ math_utils với settings
+                    new_text = wrap_exam_structure(current_text, settings)
+                    logic.push_history(new_text)
+                    st.toast("Đã đóng gói theo cấu hình tùy chỉnh!", icon="📦")
+                else:
+                    st.warning("Chưa có nội dung!")
+
+            st.button("📦 ĐÓNG GÓI MAIN", 
+                      use_container_width=True, 
+                      on_click=run_pkg_with_settings, 
+                      help="Đóng gói đề thi theo cấu hình hiện tại.")
+
+        with col_pkg_set:
+            st.button("⚙️", help="Tùy chỉnh lệnh dẫn và cấu trúc đóng gói", on_click=show_pkg_settings_dialog)
         
 
         t1, t_essay, t2, t3 = st.tabs(["✨ LÀM ĐẸP", "📝 TỰ LUẬN", "🖼️ ẢNH & TAG", "🔑 ĐÁP ÁN"])
@@ -738,25 +938,97 @@ with t3:
             show_answer_input_dialog()
             
         st.caption("💡 Mẹo: Nhấn nút trên để mở bảng nhập nhanh. Dữ liệu sẽ tự động điền vào các lệnh `\\choice`, `\\True`, `\\shortans`.")
-with tab_info:
-    st.header(f"🚀 {THONG_TIN_UNG_DUNG['Tên phần mềm']}")
-    st.caption(f"Phiên bản: {THONG_TIN_UNG_DUNG['Phiên bản']}")
-    st.divider()
+# [File: app.py] - Thay thế nội dung trong "with tab_info:"
 
+# [File: app.py] - Thay thế nội dung trong "with tab_info:"
+
+with tab_info:
+    # 1. CSS RIÊNG CHO TAB INFO (Tinh chỉnh Layout)
+    st.markdown("""
+    <style>
+        .info-header { text-align: center; margin-bottom: 35px; }
+        .info-title { font-size: 36px; font-weight: 800; color: #005fb8; margin: 0; letter-spacing: -1px; text-transform: uppercase;}
+        .info-ver { 
+            font-size: 14px; color: #555; background: #e9ecef; 
+            padding: 5px 15px; border-radius: 20px; font-weight: 600; 
+            display: inline-block; margin-top: 8px; border: 1px solid #dee2e6;
+        }
+        
+        /* CARD TÁC GIẢ */
+        .author-box {
+            background: linear-gradient(135deg, #ffffff 0%, #fcfcfc 100%);
+            border: 1px solid #e0e0e0; border-radius: 16px;
+            padding: 30px; 
+            display: flex; flex-direction: row; align-items: center; gap: 30px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.06); 
+            margin-bottom: 30px;
+        }
+        
+        .avatar-img { 
+            width: 120px; height: 120px; border-radius: 50%; object-fit: cover; 
+            border: 5px solid #fff; box-shadow: 0 5px 15px rgba(0,0,0,0.15); 
+            flex-shrink: 0; /* Không bị bóp méo ảnh */
+        }
+        
+        .author-detail { flex-grow: 1; }
+        .author-detail h3 { margin: 0 0 10px 0; color: #2c3e50; font-size: 24px; font-weight: 700; }
+        .author-detail p { margin: 6px 0; color: #555; font-size: 16px; display: flex; align-items: center; gap: 10px; }
+        
+        .social-link { 
+            text-decoration: none !important; color: white !important; background: #1877F2; 
+            padding: 10px 20px; border-radius: 8px; font-weight: 600; font-size: 14px; 
+            display: inline-flex; align-items: center; gap: 8px; margin-top: 15px;
+            transition: all 0.2s; box-shadow: 0 4px 10px rgba(24, 119, 242, 0.3);
+        }
+        .social-link:hover { background: #145dbf; transform: translateY(-2px); box-shadow: 0 6px 15px rgba(24, 119, 242, 0.4); }
+
+        /* Icon trong st.info */
+        div[data-testid="stNotification"] { border-radius: 12px !important; border-left-width: 6px !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # 2. HEADER
     st.markdown(f"""
-    <div class="author-card">
-        <img src="{THONG_TIN_UNG_DUNG['Avatar']}" class="author-avatar">
-        <div class="author-info">
-            <h2>{THONG_TIN_UNG_DUNG['Tác giả']}</h2>
+    <div class="info-header">
+        <div class="info-title">🚀 {THONG_TIN_UNG_DUNG['Tên phần mềm']}</div>
+        <span class="info-ver">{THONG_TIN_UNG_DUNG['Phiên bản']}</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 3. AUTHOR CARD
+    st.markdown(f"""
+    <div class="author-box">
+        <img src="{THONG_TIN_UNG_DUNG['Avatar']}" class="avatar-img">
+        <div class="author-detail">
+            <h3>{THONG_TIN_UNG_DUNG['Tác giả']}</h3>
             <p>🏫 <b>Đơn vị:</b> {THONG_TIN_UNG_DUNG['Đơn vị']}</p>
             <p>📞 <b>Liên hệ:</b> {THONG_TIN_UNG_DUNG['Liên hệ']}</p>
-            <a href="{THONG_TIN_UNG_DUNG['Facebook']}" target="_blank" class="social-btn">
-                <span style="font-size:15px">🔵</span> Liên hệ Facebook
+            <a href="{THONG_TIN_UNG_DUNG['Facebook']}" target="_blank" class="social-link">
+                <span style="font-size:16px">💬</span> Nhắn tin qua Facebook
             </a>
         </div>
     </div>
     """, unsafe_allow_html=True)
+
+    # 4. MÔ TẢ APP (Hiển thị đẹp nhờ Markdown đã fix)
+    st.info(THONG_TIN_UNG_DUNG['Mô tả'], icon="💡")
     
-    st.info(THONG_TIN_UNG_DUNG['Mô tả'], icon="ℹ️")
+    st.write("")
     st.divider()
-    st.caption("Developed with ❤️ by Thầy Tư Đô Nguyên & Gemini AI (2026)")
+    
+    # 5. HƯỚNG DẪN CHI TIẾT
+    st.subheader("📖 TÀI LIỆU HƯỚNG DẪN")
+    st.caption("Nhấn vào từng mục để xem chi tiết cách sử dụng các tính năng nâng cao.")
+
+    for title, content in NOI_DUNG_HUONG_DAN:
+        with st.expander(f"📌 {title}", expanded=False):
+            st.markdown(content, unsafe_allow_html=True)
+
+    st.divider()
+    
+    # 6. FOOTER
+    c_ft1, c_ft2 = st.columns([1, 1])
+    with c_ft1:
+        st.caption("© 2026 Latex Pro Web. All rights reserved.")
+    with c_ft2:
+        st.markdown("<div style='text-align:right; color:#888; font-size:12px'><i>Powered by Streamlit & Python</i></div>", unsafe_allow_html=True)
