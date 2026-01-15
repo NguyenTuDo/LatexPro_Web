@@ -1,138 +1,127 @@
 import streamlit as st
+import streamlit.components.v1 as components
 
 # 1. Cấu hình trang
 st.set_page_config(
     page_title="LATEX PRO WEB - Moved",
     page_icon="🚀",
-    layout="wide" # Dùng wide để nền rộng thoáng hơn
+    layout="wide",
+    initial_sidebar_state="collapsed"
 )
 
-# 2. CSS Tùy chỉnh (Trái tim của giao diện đẹp)
+# 2. CSS "Siêu to khổng lồ" & Dark Mode
 st.markdown("""
 <style>
-    /* Ẩn menu mặc định của Streamlit cho gọn */
+    /* Ẩn toàn bộ UI mặc định của Streamlit */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
+    [data-testid="stSidebar"] {display: none;} /* Ẩn luôn sidebar */
 
-    /* Căn giữa nội dung toàn trang */
+    /* Căn giữa và Màu nền */
     .stApp {
-        background-color: #0e1117; /* Màu nền tối sang trọng (hoặc để trắng tùy theme) */
+        background-color: #0e1117;
         display: flex;
         align-items: center;
         justify_content: center;
+        height: 100vh; /* Full màn hình */
     }
 
-    /* Container chính (Cái khung bo tròn) */
+    /* Khung Card Chính */
     .main-card {
         background: linear-gradient(145deg, #1e2130, #161924);
         border: 1px solid #333;
         border-radius: 30px;
-        padding: 60px 40px;
+        padding: 50px;
         text-align: center;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-        max-width: 800px;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+        max-width: 900px;
+        width: 90%;
         margin: auto;
-        animation: fadeIn 1.5s ease-in-out;
+        animation: zoomIn 0.8s ease-out;
     }
 
     /* Tên Web: LATEX PRO WEB */
     .app-title {
         font-family: 'Helvetica Neue', sans-serif;
-        font-size: 80px;
+        font-size: 90px; /* Chữ cực to */
         font-weight: 900;
-        margin-bottom: 10px;
-        background: -webkit-linear-gradient(45deg, #FF4B4B, #FF9068);
+        margin: 20px 0;
+        background: -webkit-linear-gradient(120deg, #00C9FF, #92FE9D); /* Màu xanh công nghệ */
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         line-height: 1.1;
+        letter-spacing: -2px;
     }
 
-    /* Dòng thông báo phụ */
+    /* Mô tả */
     .subtitle {
-        color: #e0e0e0;
-        font-size: 28px;
-        font-weight: 500;
-        margin-bottom: 40px;
+        color: #ddd;
+        font-size: 26px;
+        font-weight: 400;
+        margin-bottom: 50px;
     }
 
-    /* Icon minh họa */
-    .icon-move {
-        font-size: 100px;
-        margin-bottom: 20px;
+    /* NÚT BẤM (CTA) */
+    .btn-glow {
         display: inline-block;
-        animation: bounce 2s infinite;
-    }
-
-    /* NÚT BẤM SIÊU TO (CTA) */
-    .btn-new-home {
-        background-image: linear-gradient(to right, #1FA2FF 0%, #12D8FA  51%, #1FA2FF  100%);
-        margin: 20px auto;
-        padding: 25px 60px;
-        text-align: center;
-        text-transform: uppercase;
-        transition: 0.5s;
-        background-size: 200% auto;
-        color: white !important;
-        box-shadow: 0 0 20px #eee;
-        border-radius: 50px;
-        display: inline-block;
-        font-size: 30px;
+        padding: 30px 70px; /* Nút to */
+        color: #fff !important;
+        background: linear-gradient(45deg, #ff00cc, #333399);
+        font-size: 35px;
         font-weight: bold;
         text-decoration: none;
-        border: none;
-        cursor: pointer;
+        border-radius: 50px;
+        box-shadow: 0 0 20px #ff00cc;
+        transition: all 0.3s ease;
+        border: 2px solid rgba(255,255,255,0.1);
     }
 
-    .btn-new-home:hover {
-        background-position: right center; /* change the direction of the change here */
-        color: #fff;
+    .btn-glow:hover {
+        transform: scale(1.05);
+        box-shadow: 0 0 40px #ff00cc, 0 0 20px #333399;
         text-decoration: none;
-        transform: scale(1.05); /* Phóng to nhẹ khi di chuột */
     }
 
-    /* Hiệu ứng chuyển động */
-    @keyframes bounce {
-        0%, 20%, 50%, 80%, 100% {transform: translateY(0);}
-        40% {transform: translateY(-20px);}
-        60% {transform: translateY(-10px);}
-    }
-    @keyframes fadeIn {
-        0% {opacity:0;}
-        100% {opacity:1;}
+    /* Animation */
+    @keyframes zoomIn {
+        0% {transform: scale(0.8); opacity: 0;}
+        100% {transform: scale(1); opacity: 1;}
     }
 
 </style>
 """, unsafe_allow_html=True)
 
-# 3. Nội dung HTML chính
+# 3. Render giao diện HTML
 def main():
-    # --- CẤU HÌNH LINK MỚI TẠI ĐÂY ---
+    # LINK MỚI CỦA BẠN
     NEW_URL = "https://latexpro-web.vercel.app/"
     
-    # Tạo layout căn giữa
-    col1, col2, col3 = st.columns([1, 10, 1])
+    # Sử dụng HTML thuần để kiểm soát hoàn toàn việc chuyển trang
+    # target="_self" là lệnh bắt buộc trình duyệt mở link ngay tại tab hiện tại
+    html_content = f"""
+    <div class="main-card">
+        <div style="font-size: 80px;">⚠️</div>
+        <div class="app-title">LATEX PRO WEB</div>
+        <div class="subtitle">
+            Hệ thống đã chuyển sang nền tảng <b>Vercel</b>.<br>
+            Nhanh hơn. Mạnh mẽ hơn. Ổn định hơn.
+        </div>
+        
+        <a href="{NEW_URL}" target="_self" class="btn-glow">
+            🚀 CHUYỂN NHÀ NGAY
+        </a>
+        
+        <p style="margin-top: 40px; color: #666; font-size: 14px;">
+            Click nút trên để rời khỏi trang này vĩnh viễn.
+        </p>
+    </div>
+    """
     
+    # Hiển thị layout
+    col1, col2, col3 = st.columns([1, 10, 1])
     with col2:
-        st.markdown(f"""
-<div class="main-card">
-<div class="icon-move">🚀</div>
-<div class="app-title">LATEX PRO WEB</div>
-<div class="subtitle">
-Chúng tôi đã chuyển sang hệ thống mới<br>
-Mạnh mẽ hơn - Tốc độ hơn
-</div>
-                
-<a href="{NEW_URL}" target="_self" class="btn-new-home">
-👉 TRUY CẬP NGAY
-</a>
-                
-<p style="margin-top: 30px; color: #888; font-size: 16px;">
-<i>(Hệ thống cũ này sẽ chính thức đóng lại sau ít phút)</i>
-</p>
-</div>
-""", unsafe_allow_html=True)
+        st.markdown(html_content, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
-
