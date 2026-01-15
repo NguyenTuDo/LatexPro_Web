@@ -107,21 +107,21 @@ def main():
             Hệ thống đã chuyển sang nền tảng <b>Vercel</b>.<br>
             Nhanh hơn. Mạnh mẽ hơn. Ổn định hơn.
         </div>
+<a href="{https://latexpro-web.vercel.app/}" target="_self" class="btn-glow">
+🚀 CHUYỂN NHÀ NGAY
+</a>
         
-        <a href="{NEW_URL}" target="_self" class="btn-glow">
-            🚀 CHUYỂN NHÀ NGAY
-        </a>
-        
-        <p style="margin-top: 40px; color: #666; font-size: 14px;">
-            Click nút trên để rời khỏi trang này vĩnh viễn.
-        </p>
-    </div>
-    """
+<p style="margin-top: 40px; color: #666; font-size: 14px;">
+Click nút trên để rời khỏi trang này vĩnh viễn.
+</p>
+</div>
+"""
     
-    # Hiển thị layout
-    col1, col2, col3 = st.columns([1, 10, 1])
-    with col2:
-        st.markdown(html_content, unsafe_allow_html=True)
+# Hiển thị layout
+col1, col2, col3 = st.columns([1, 10, 1])
+with col2:
+st.markdown(html_content, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
+
