@@ -108,7 +108,7 @@ def main():
             Nhanh hơn. Mạnh mẽ hơn. Ổn định hơn.
         </div>
         
-<a href="{https://latexpro-web.vercel.app/}" target="_self" class="btn-glow">
+<a href="{NEW_URL}" target="_self" class="btn-glow">
 🚀 CHUYỂN NHÀ NGAY
 </a>
         
@@ -125,3 +125,4 @@ Click nút trên để rời khỏi trang này vĩnh viễn.
 
 if __name__ == "__main__":
     main()
+
