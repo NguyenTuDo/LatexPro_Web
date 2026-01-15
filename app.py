@@ -115,23 +115,24 @@ def main():
     
     with col2:
         st.markdown(f"""
-            <div class="main-card">
-                <div class="icon-move">🚀</div>
-                <div class="app-title">LATEX PRO WEB</div>
-                <div class="subtitle">
-                    Chúng tôi đã chuyển sang hệ thống mới<br>
-                    Mạnh mẽ hơn - Tốc độ hơn
-                </div>
+<div class="main-card">
+<div class="icon-move">🚀</div>
+<div class="app-title">LATEX PRO WEB</div>
+<div class="subtitle">
+Chúng tôi đã chuyển sang hệ thống mới<br>
+Mạnh mẽ hơn - Tốc độ hơn
+</div>
                 
-                <a href="{NEW_URL}" target="_self" class="btn-new-home">
-                    👉 TRUY CẬP NGAY
-                </a>
+<a href="{NEW_URL}" target="_self" class="btn-new-home">
+👉 TRUY CẬP NGAY
+</a>
                 
-                <p style="margin-top: 30px; color: #888; font-size: 16px;">
-                    <i>(Hệ thống cũ này sẽ chính thức đóng lại sau ít phút)</i>
-                </p>
-            </div>
-        """, unsafe_allow_html=True)
+<p style="margin-top: 30px; color: #888; font-size: 16px;">
+<i>(Hệ thống cũ này sẽ chính thức đóng lại sau ít phút)</i>
+</p>
+</div>
+""", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
+
